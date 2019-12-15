@@ -28,7 +28,7 @@ public class BTTree<T extends Comparable<T>> {
         hot.set(null);
         while (v != null) {// 逐层查找
             int r = v.key.search(e);//在当前节点中，找到不大于e的最大关键码
-            if (r >= 0 && e == v.key.get(r)) return v;// 说明是叶子节点，成功
+            if (r >= 0 && e.compareTo(v.key.get(r)) == 0) return v;// 说明是叶子节点，成功
 
             hot.set(v);// 否则转向对应子树
             v = v.child.get(r + 1);
@@ -54,18 +54,19 @@ public class BTTree<T extends Comparable<T>> {
         if (v.key.size() <= order) return;// 不满足上浮条件，递归基出口
 
         int s = v.key.size() / 2;
+        int size = v.key.size();
         BTNode<T> u = new BTNode<>();
-        for (int i = 0; i < v.key.size() - s - 1; i++) {// v右侧order-s-1个孩子及关键码分裂为右侧节点u
+        for (int i = 0; i < size - s - 1; i++) {// v右侧order-s-1个孩子及关键码分裂为右侧节点u
             u.key.add(i, v.key.remove(s + 1));
         }
         if (v.child.size() != 0) {//这里需要这样处理，因为新节点的孩子为空
-            for (int i = 0; i < v.key.size() - s; i++) {
+            for (int i = 0; i < size - s; i++) {
                 u.child.add(i, v.child.remove(s + 1));//
             }
         }
 
         if (v.child.size() != 0) {//若u的孩子们非空
-            for (int i = 0; i < v.key.size() - s; i++) {
+            for (int i = 0; i < size - s; i++) {
                 u.child.get(i).parent = u;//令其父节点统一指向u
             }
         }
@@ -200,8 +201,8 @@ public class BTTree<T extends Comparable<T>> {
         }
 
         List<Integer> list = new ArrayList<>(n);
-        for (int i = 0; i < n; i++) {
-            BTNode<Integer> search = tree.search(n);
+        for (int i = n - 1; i > 0; i--) {
+            BTNode<Integer> search = tree.search(i);
             if (search == null) {
                 list.add(i);
             }
