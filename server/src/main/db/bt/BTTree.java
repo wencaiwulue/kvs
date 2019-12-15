@@ -1,7 +1,6 @@
 package main.db.bt;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -93,7 +92,7 @@ public class BTTree<T extends Comparable<T>> {
 
         int r = v.key.search(e);
         if (v.child.get(0) != null) {
-            BTNode<T> u = v.child.get(r + 1);
+            BTNode<T> u = v.child.get(r + 1);//右子树的最左子树
             while (u.child.get(0) != null) {
                 u = u.child.get(0);
             }
@@ -102,7 +101,9 @@ public class BTTree<T extends Comparable<T>> {
             r = 0;
         }
         v.key.remove(r);
-        v.child.remove(r + 1);
+        if (v.child.size() != 0) {
+            v.child.remove(r + 1);
+        }
         size--;
         underFlow(v);
         return true;
@@ -207,7 +208,11 @@ public class BTTree<T extends Comparable<T>> {
                 list.add(i);
             }
         }
-        System.out.println(Arrays.toString(list.toArray()));
-        System.out.println(list.size());
+        assert list.size() == 0;
+
+        for (int i = 0; i < 1000; i++) {
+            tree.remove(i);
+        }
+        assert tree.size == 0;
     }
 }
