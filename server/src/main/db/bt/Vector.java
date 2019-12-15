@@ -6,20 +6,20 @@ package main.db.bt;
  */
 public class Vector<E extends Comparable<E>> extends java.util.Vector<E> {
 
-    private int realSize = 0;
+    public int realSize = 0;
 
     Vector() {
         super(10);
-        for (int i = 0; i < 10; i++) {
-            super.add(i, null);
-        }
+//        for (int i = 0; i < 10; i++) {
+//            super.add(i, null);
+//        }
     }
 
     public Vector(int initialCapacity) {
         super(initialCapacity);
-        for (int i = 0; i < initialCapacity; i++) {
-            super.add(i, null);
-        }
+//        for (int i = 0; i < initialCapacity; i++) {
+//            super.add(i, null);
+//        }
     }
 
     @Override
@@ -57,10 +57,5 @@ public class Vector<E extends Comparable<E>> extends java.util.Vector<E> {
     public void add(int index, E element) {
         realSize++;
         super.add(index, element);
-    }
-
-    @Override
-    public synchronized int size() {
-        return realSize;
     }
 }
