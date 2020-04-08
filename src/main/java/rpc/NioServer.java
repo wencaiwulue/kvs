@@ -1,12 +1,11 @@
 package rpc;
 
 
+import lombok.SneakyThrows;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.core.util.Assert;
 import raft.Node;
 import rpc.model.Request;
-import rpc.model.Response;
 import thread.FSTUtil;
 import thread.ThreadUtil;
 
@@ -16,9 +15,6 @@ import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.util.Iterator;
-import java.util.concurrent.Callable;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Poller class.
@@ -26,24 +22,18 @@ import java.util.concurrent.TimeUnit;
  * @author naison
  * @since 3/25/2020 19:32
  */
-public class Poller implements Runnable {
-    private static final Logger log = LogManager.getLogger(Poller.class);
+public class NioServer implements Runnable {
+    private static final Logger log = LogManager.getLogger(NioServer.class);
 
     private Selector selector;
     private Node node;
 
     private volatile boolean close = false;
 
-    public Poller(InetSocketAddress addr) throws Exception {
+    @SneakyThrows
+    public NioServer(InetSocketAddress addr, Node node) {
         this.selector = Selector.open();
         this.bind(addr);
-    }
-
-    public Selector getSelector() {
-        return selector;
-    }
-
-    public void setNode(Node node) {
         this.node = node;
     }
 
@@ -149,16 +139,15 @@ public class Poller implements Runnable {
 
     // todo nio
     private boolean processRead(SelectionKey key) {
-        Future<Boolean> submit = ThreadUtil.getPool().submit(new Handle(key, selector, node));
         try {
-            return submit.get(100, TimeUnit.MILLISECONDS);
+            ThreadUtil.getPool().execute(new Handle(key, selector, node));
         } catch (Exception e) {
-            submit.cancel(false);
             return false;
         }
+        return true;
     }
 
-    public static class Handle implements Callable<Boolean> {
+    static class Handle implements Runnable {
 
         private SelectionKey key;
         private Selector selector;
@@ -171,39 +160,27 @@ public class Poller implements Runnable {
         }
 
         @Override
-        public Boolean call() {
+        public void run() {
             SocketChannel channel = (SocketChannel) key.channel();
             ByteBuffer byteBuffer = ByteBuffer.allocate(1024);
             if (channel != null && channel.isOpen() && channel.isConnected()) {
                 try {
                     int read = channel.read(byteBuffer);
-                    if (read <= 0) {
-                        return false;// 也就是客户端主动断开链接，因为在客户端断开的时候，也会发送一个读事件
-                    }
+                    if (read <= 0) return;// 也就是客户端主动断开链接，因为在客户端断开的时候，也会发送一个读事件
 
-                    Object o = FSTUtil.getConf().asObject(byteBuffer.array());
-                    Request request = null;
-                    if (o instanceof Response) {
-                        log.error("为什么这里是response呢，奇怪.{}", o);// 其实这里可能是不要返回包的request，但是现在的项目里是不允许这样的
-                        return true;
-                    } else if (o instanceof Request) {
-                        request = (Request) o;
-                    }
-                    Assert.requireNonEmpty(node, "this is not impossible!!!");
-                    node.service(request, channel, selector);// handle the request
-                } catch (Exception e) {
+                    Request request = (Request) FSTUtil.getConf().asObject(byteBuffer.array());
+                    node.handle(request, channel, selector);// handle the request
+                } catch (IOException e) {
                     log.error("出错了，关闭channel", e);
                     try {
                         channel.close();
-                    } catch (Exception ignored) {
+                    } catch (Exception ex) {
+                        log.error(ex);
                     }
-                    return false;
                 }
             } else {
                 log.error("这是不可以的");
-                return false;
             }
-            return true;
         }
     }
 }

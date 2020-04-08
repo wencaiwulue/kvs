@@ -1,4 +1,4 @@
-import rpc.Server;
+import rpc.App;
 
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
@@ -16,8 +16,8 @@ public class KvsApplication {
         }
 
         for (InetSocketAddress s : address) {
-            Server server = new Server(s, address.stream().filter(e -> !e.equals(s)).collect(Collectors.toList()));// 邻居不包含自己
-            server.start();
+            App app = new App(s, address.stream().filter(e -> !e.equals(s)).collect(Collectors.toList()));// 邻居不包含自己
+            app.start();
         }
     }
 }

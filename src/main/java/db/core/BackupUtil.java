@@ -1,6 +1,8 @@
 
 package db.core;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.nustaq.serialization.FSTConfiguration;
 import thread.FSTUtil;
 
@@ -11,6 +13,7 @@ import java.io.RandomAccessFile;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.FileSystemException;
+import java.util.ArrayDeque;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -20,7 +23,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @author naison
  * @since 3/31/2020 20:56
  */
-public class HashMapSerialize {
+public class BackupUtil {
+    private static final Logger log = LogManager.getLogger(BackupUtil.class);
+
     public static void main(String[] args) throws IOException {
         String path = "C:\\Users\\89570\\Documents\\test3.txt";
         int n = 10000000;
@@ -29,7 +34,7 @@ public class HashMapSerialize {
             map.put(String.valueOf(i), i);
         }
         long start = System.nanoTime();
-        writeToDisk(map, path);
+        snapshotToDisk(map, path);
         System.out.println("写入磁盘花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
         start = System.nanoTime();
         readFromDisk(map, path);
@@ -43,22 +48,36 @@ public class HashMapSerialize {
      * ---------------------------------------------------------------------
      * 固定的8个byte的头，用于存储实际使用大小
      * */
-    private static void writeToDisk(ConcurrentHashMap<String, Object> map, String path) throws IOException {
+    public static void snapshotToDisk(ConcurrentHashMap<String, Object> map, String path) throws IOException {
+        if (map.isEmpty()) return;
+
         File file = new File(path);
 
-        long p;
-        RandomAccessFile raf;
-        if (file.exists()) {
-            raf = new RandomAccessFile(file, "rw");
-            p = raf.readLong();
-        } else {
-            boolean newFile = file.createNewFile();
-            if (!newFile) {
-                throw new FileSystemException("create file failed!!!");
+        long p = 0;
+        RandomAccessFile raf = null;
+        try {
+            if (file.exists()) {
+                raf = new RandomAccessFile(file, "rw");
+                p = raf.readLong();
+            } else {
+                boolean newFile = file.createNewFile();
+                if (!newFile) {
+                    throw new FileSystemException("create file failed!!!");
+                }
+                raf = new RandomAccessFile(file, "rw");
+                p = 8L;// 固定的头，标识现在已经写到的位置，单位byte
             }
-            raf = new RandomAccessFile(file, "rw");
-            p = 8L;// 固定的头，标识现在已经写到的位置，单位byte
+        } catch (FileSystemException e) {
+            e.printStackTrace();
+            log.error("这是不可能的把");
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+            log.error("这也是不可能的把");
+        } catch (IOException e) {
+            e.printStackTrace();
         }
+
+        assert raf != null;
 
         FileChannel channel = raf.getChannel();
         MappedByteBuffer mappedByteBuffer = channel.map(FileChannel.MapMode.READ_WRITE, p, Integer.MAX_VALUE);
@@ -71,9 +90,68 @@ public class HashMapSerialize {
         }
         mappedByteBuffer.force();
 
-        raf.seek(0);
-        raf.writeLong(p + length.get());// 更新头的长度
-        raf.close();
+        try {
+            raf.seek(0);
+            raf.writeLong(p + length.get());// 更新头的长度
+        } catch (IOException e) {
+            e.printStackTrace();
+            log.error("这里出问题了", e);
+        } finally {
+            raf.close();
+        }
+    }
+
+
+    public static void appendToDisk(ArrayDeque<byte[]> append, int size, String path) throws IOException {
+        File file = new File(path);
+
+        long p = 0;
+        RandomAccessFile raf = null;
+        try {
+            if (file.exists()) {
+                raf = new RandomAccessFile(file, "rw");
+                p = raf.readLong();
+            } else {
+                boolean newFile = file.createNewFile();
+                if (!newFile) {
+                    throw new FileSystemException("create file failed!!!");
+                }
+                raf = new RandomAccessFile(file, "rw");
+                p = 8L;// 固定的头，标识现在已经写到的位置，单位byte
+            }
+        } catch (FileSystemException e) {
+            e.printStackTrace();
+            log.error("这是不可能的把");
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+            log.error("这也是不可能的把");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        assert raf != null;
+
+        FileChannel channel = raf.getChannel();
+        MappedByteBuffer mapped = channel.map(FileChannel.MapMode.READ_WRITE, p, Integer.MAX_VALUE);
+        AtomicInteger length = new AtomicInteger(0);// 本次写入的量
+        for (int i = 0; i < size; i++) {
+            byte[] bytes = append.pollLast();
+            if (bytes != null) {
+                mapped.put(bytes);
+                length.addAndGet(bytes.length);
+            }
+        }
+        mapped.force();
+
+        try {
+            raf.seek(0);
+            raf.writeLong(p + length.get());// 更新头的长度
+        } catch (IOException e) {
+            e.printStackTrace();
+            log.error("这里出问题了", e);
+        } finally {
+            raf.close();
+        }
     }
 
     private static void write(MappedByteBuffer map, byte[] bytes, AtomicInteger l) {

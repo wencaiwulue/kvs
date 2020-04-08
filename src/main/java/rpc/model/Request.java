@@ -16,6 +16,5 @@ import java.util.Map;
 @NoArgsConstructor
 public class Request implements Serializable {
     int type;
-    boolean keepAlive;
     Map<String, Object> body;
 }

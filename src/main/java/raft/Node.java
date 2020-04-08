@@ -2,9 +2,10 @@ package raft;
 
 import db.core.DB;
 import lombok.Data;
+import lombok.SneakyThrows;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import rpc.SocketPoller;
+import rpc.Client;
 import rpc.model.Request;
 import rpc.model.RequestTypeEnum;
 import rpc.model.Response;
@@ -12,16 +13,16 @@ import thread.FSTUtil;
 import thread.ThreadUtil;
 
 import java.io.IOException;
-import java.net.ConnectException;
 import java.net.InetSocketAddress;
-import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
+import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Future;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -36,13 +37,10 @@ import static rpc.model.RequestTypeEnum.*;
 public class Node implements Runnable {
     private static final Logger log = LogManager.getLogger(Node.class);
 
-    private Selector selector;
-
-    private DB db = new DB();
     private InetSocketAddress address; // 本机的IP和端口信息
     private List<InetSocketAddress> peerAddress; //其它节点的IP和端口信息
-    private ConcurrentHashMap<InetSocketAddress, SocketChannel> connects = new ConcurrentHashMap<>();// 主节点于各个简单的链接
-    private SocketPoller socketPoller;
+
+    private DB db;
     private StateEnum state = StateEnum.Follower;// 默认是follower角色
     private Long timeout;//150ms -- 300ms randomized  超时时间,选举的时候，如果主节点挂了，则所有的节点开始timeout，然后最先timeout结束的节点变为candidate，
     // 参见竞选，然后发送竞选类型的请求，如果半数以上统一，则广播给所有人，
@@ -50,110 +48,109 @@ public class Node implements Runnable {
 
     private AtomicLong l = new AtomicLong(0);// 用来生成提案编号使用
 
-    private int term;// 第几任leader
+    private volatile long lastHeartBeat;
+    private final long heartBeatRate = 150;// the last and this heart beat difference is 150ms, also means if one node lastHeartBeat + heartBeatRate < currentNanoTime, leader dead. should elect leader
+
+    private volatile int term = 0;// 第几任leader
+    private InetSocketAddress lastVoteFor;// 判断当前选举是否已经投票
     private volatile InetSocketAddress leaderAddr;//leader节点信息，因为所有的数据处理都需要leader来操作。
 
-    public Node(InetSocketAddress address, List<InetSocketAddress> peerAddress, Selector selector) {
+    @SneakyThrows
+    public Node(InetSocketAddress address, List<InetSocketAddress> peerAddress) {
         this.address = address;
         this.peerAddress = peerAddress;
-        this.selector = selector;
+        this.db = new DB(String.valueOf(address.getPort()));
+    }
+
+
+    @SneakyThrows
+    @Override
+    public void run() {
+        Runnable elect = () -> {
+            if (leaderAddr == null || System.nanoTime() > lastHeartBeat + heartBeatRate) {
+                elect();
+            }
+        };
+        ThreadUtil.getSchedulePool().scheduleAtFixedRate(elect, 0, 150, TimeUnit.MILLISECONDS);// 定期检查leader是不是死掉了
+
+        Runnable heartBeats = () -> {
+            if (isLeader()) {// 如果自己是主领导，就需要给各个节点发送心跳包
+                for (InetSocketAddress address : peerAddress) {
+                    if (address.equals(this.address)) continue;// 自己不发
+
+                    Response response = Client.doRequest(address, new Request(HeartBeat, Map.of("leader", this.address)));
+                    log.error("收到从follower的心跳回包.{}", response);
+                    if (response != null && response.getCode() == AddNewNode) {// 说明之前的机器死掉了，现在活过来了
+                        // todo 传输数据
+                        Response res = Client.doRequest(address, new Request(Append, Map.of()));
+                    }
+                    log.error("已经通知了全球人");
+                    break;
+                }
+            }
+        };
+        ThreadUtil.getSchedulePool().scheduleAtFixedRate(heartBeats, 0, 150, TimeUnit.MILLISECONDS);// 每150ms心跳一下
     }
 
     private void elect() {
+        int i = new Random(47).nextInt(150);// 0-150ms
+        try {
+            Thread.sleep(i + 150);// 睡一会儿，等待选举
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        if (leaderAddr != null && System.nanoTime() < lastHeartBeat + heartBeatRate) return;
+
         log.error("开始选举");
         AtomicInteger ai = new AtomicInteger(1);//先给自己投一票
-        if (leaderAddr == null) {
-            int i = new Random(47).nextInt(150);// 0-150ms
-            try {
-                Thread.sleep(i + 150);// 等待选举
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+        state = StateEnum.Candidate;// 改变状态为candidate
+        for (InetSocketAddress addr : peerAddress) {// 这里可以使用callable + future，并行加速处理
+            if (addr.equals(address)) continue;
+            // todo 这里写消息的时候，可以使用DirectByteBuffer实现零拷贝
+            Response response = Client.doRequest(addr, new Request(Vote, Map.of("term", this.term + 1)));
+            if (response != null && response.getCode() == 200) {
+                log.error("收到从:{}的回包:{}", addr, response);
+                ai.addAndGet(1);
+            } else {
+                log.error("竟然不投票，可能是挂掉了，不理它。远端主机为：{}", addr);
             }
-            if (leaderAddr == null) {
-                state = StateEnum.Candidate;// 改变状态为candidate
-                List<Future<Response>> list = new ArrayList<>(peerAddress.size());
-                for (InetSocketAddress addr : peerAddress) {
-                    int retry = 3;
-//                    for (int p = 0; p < retry; p++) {
-//                        SocketChannel socketChannel = socketPoller.getServerConnection(addr);
-//                        if (socketChannel == null) {
-////                        return null;// 可能主机卒了
-//                            continue;
-//                        }
-//
-//                        if (!socketChannel.isConnected() || !socketChannel.isOpen()) {
-//                            log.error("到这里应该不会出现这样的情况，当前主机{}与主机{}的链接中断了", this.address, addr);
-//                        }
-//                    Callable<Response> c = () -> {
-//                        try {// todo 这里写消息的时候，可以使用DirectByteBuffer实现零拷贝
-//                            socketChannel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(new Request(Vote, true, Map.of("", "")))));
-//                            ByteBuffer buffer = ByteBuffer.allocate(1024);
-//                            int read = socketChannel.read(buffer);
-//                            if (read > 0) {
-//                                Response response = (Response) FSTUtil.getConf().asObject(buffer.array());
-//                                log.error("收到从:{}的回包:{}", 1, response);
-//                                if (response != null && response.getCode() == 200) {
-//                                    ai.addAndGet(1);
-//                                }
-//                                break;
-//                            }
-                    Response response = this.socketPoller.request(addr, new Request(Vote, true, Map.of("", "")));
-                    log.error("收到从:{}的回包:{}", 1, response);
-                    if (response != null && response.getCode() == 200) {
-                        ai.addAndGet(1);
-                    }
-                    break;
-
-//                        } catch (IOException e) {
-//                            log.error("可能是有的主机死掉了，有问题！！！", e);
-//                        }
-//                        return null;
-//                    }
-//                    };
-//                    list.add(ThreadUtil.getPool().submit(c));
-                }
-
-//                for (Future<Response> future : list) {
-//                    try {
-//                        Response response = future.get(300, TimeUnit.MILLISECONDS);
-//                        if (response != null && response.getCode() == 200) {
-//                            ai.addAndGet(1);
-//                        }
-//                    } catch (Exception e) {
-//                        log.error("等待选举的过程中出问题了，不用担心可能是因为有的机器宕机了，{}", e.getMessage());
-//                    }
-//                }
-                if (ai.get() > Math.ceil(peerAddress.size() / 2D)) {// 超过半数了，我成功了
-                    log.error("选举成功，选出leader了{}", this.address);
-                    this.term = this.term + 1;
-                    this.leaderAddr = this.address;
-                } else {
-                    log.error("选举失败");
-                }
-            }
+        }
+        if (ai.get() > Math.ceil(peerAddress.size() / 2D)) {// 超过半数了，我成功了
+            log.error("选举成功，选出leader了{}", this.address);
+            this.term = this.term + 1;
+            this.leaderAddr = this.address;
+            this.state = StateEnum.Leader;
+        } else {
+            log.error("选举失败");
         }
     }
 
-    public void service(Request request, SocketChannel channel, Selector selector) {
-        // todo curd
+
+    private boolean checkAlive(SocketChannel channel) {
+        return channel != null && channel.isOpen() && channel.isConnected();
     }
 
-    public void handle(Request request, SocketChannel channel) {
-        if (request == null) {
-            return;
-        }
+    private boolean isLeader() {
+        return leaderAddr != null && leaderAddr.equals(this.address) && state == StateEnum.Leader;
+    }
+
+    // todo 可以拆分为服务器之间与服务器和client两种，也就是状态协商和curd
+    public void handle(Request request, SocketChannel channel, Selector selector) {
+        if (request == null) return;
 
         switch (request.getType()) {
             case HeartBeat: {
-                InetSocketAddress n = (InetSocketAddress) request.getBody().get("leader");
-
-                log.error("已经收到来自leader的心跳包, 其中包含了主节点的信息，{}", n);
-                if (n != null) {// 说明自己已经out了，需要更新主节点信息
-                    this.leaderAddr = n;
+                lastHeartBeat = System.nanoTime();
+                InetSocketAddress leaderAddr = (InetSocketAddress) request.getBody().get("leader");
+                log.error("已经收到来自leader的心跳包, 其中包含了主节点的信息，{}", leaderAddr);
+                if (leaderAddr != null) {// 说明自己已经out了，需要更新主节点信息
+                    this.leaderAddr = leaderAddr;
+                    this.state = StateEnum.Follower;
                     try {
-                        channel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(Response.builder().message("pong").build())));// 先构成一次完整的rpc
+                        channel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(new Response(AddNewNode, 0, null))));// 先构成一次完整的rpc
+                        channel.register(selector, SelectionKey.OP_READ);
                     } catch (ClosedChannelException e) {
-                        log.error("这里的channel又失效了");
+                        log.error("心跳包这里的channel又失效了");
                     } catch (IOException e) {
                         log.error("心跳包回复失败。{}", e.getMessage());
                     }
@@ -165,14 +162,8 @@ public class Node implements Runnable {
             case AddNewNode: {//todo
                 try {
                     // todo 从un-commit中拿去日志，还要从主节点中拿取数据，也就是自己out事件里，世界的变化
-//                    FileChannel f = FileChannel.open(Path.of("C:\\Users\\89570\\Documents\\Kvs file\\un-commit.txt"), Set.of(StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE));
-//                    MappedByteBuffer map = f.map(FileChannel.MapMode.READ_WRITE, 0, 1024);
-//                    String s = new String(map.array());
-                    if (!channel.isOpen() || !channel.isConnected()) {
-                        log.error("AddNewNode话说这里为什么链接断了呢");
-                    } else {
-                        channel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(Response.builder().type(AddNewNode).build())));// 先构成一次完整的rpc
-                    }
+                    channel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(new Response(AddNewNode, 0, null))));// 先构成一次完整的rpc
+                    channel.register(selector, SelectionKey.OP_READ);
                 } catch (ClosedChannelException e) {
                     log.error("这里的channel又失效了");
                 } catch (IOException e) {
@@ -180,12 +171,18 @@ public class Node implements Runnable {
                 }
             }
             case Vote: {
+                log.error("收到vote请求，{}", request);
                 try {
-                    if (!channel.isOpen() || !channel.isConnected()) {
-                        log.error("Vote话说这里为什么链接断了呢");
+                    Map<String, Object> body = request.getBody();
+                    if (this.lastVoteFor == null && (int) body.getOrDefault("term", -1) > this.term) {// 还没投过票
+                        channel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(new Response(200, 0, null))));
+                        this.lastVoteFor = (InetSocketAddress) channel.getRemoteAddress();
                     } else {
-                        channel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(Response.builder().message("vote reply").build())));
+                        channel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(new Response(100, 0, null))));
                     }
+                    channel.register(selector, SelectionKey.OP_READ);
+                } catch (ClosedChannelException e) {
+                    log.error("vote这里的channel又失效了");
                 } catch (IOException e) {
                     log.error("vote回复失败。{}", e.getMessage());
                 }
@@ -203,22 +200,20 @@ public class Node implements Runnable {
 
                 if (!leaderAddr.equals(this.address)) {
                     try {
-                        SocketChannel socketChannel = connects.get(leaderAddr);
-                        socketChannel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(request)));
-                        ByteBuffer buffer = ByteBuffer.allocate(1024);
-                        socketChannel.read(buffer); // 这里做了一次转发，但是转发还是一样，需要等回包，然后再返回给前端
-                        channel.write(buffer);
-                        ByteBuffer byteBuffer = ByteBuffer.allocate(1024);
-                        channel.read(byteBuffer);
-                        Response o = (Response) FSTUtil.getConf().asObject(byteBuffer.array());
                         // 这个是回包
                         channel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(new Response())));// 这里返回给前端
+                        channel.register(selector, SelectionKey.OP_READ);
+                    } catch (ClosedChannelException e) {
+                        log.error("tryAccept1这里的channel又失效了");
                     } catch (IOException e) {
                         log.error("tryAccept1回复失败。{}", e.getMessage());
                     }
                 } else {
                     try {
                         channel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(new Response())));
+                        channel.register(selector, SelectionKey.OP_READ);
+                    } catch (ClosedChannelException e) {
+                        log.error("tryAccept2这里的channel又失效了");
                     } catch (IOException e) {
                         log.error("tryAccept2回复失败。{}", e.getMessage());
                     }
@@ -226,14 +221,13 @@ public class Node implements Runnable {
                 break;
             }
             case doAccept: {
+                Optional<Map.Entry<String, Object>> entry = request.getBody().entrySet().stream().findFirst();
+                entry.ifPresent(stringObjectEntry -> db.set(stringObjectEntry.getKey(), stringObjectEntry.getValue()));
                 try {
-                    Optional<Map.Entry<String, Object>> entry = request.getBody().entrySet().stream().findFirst();
-                    entry.ifPresent(stringObjectEntry -> db.set(stringObjectEntry.getKey(), stringObjectEntry.getValue()));
-                    if (!channel.isOpen() || !channel.isConnected()) {
-                        log.error("doAccept话说这里为什么链接断了呢");
-                    } else {
-                        channel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(new Response())));
-                    }
+                    channel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(new Response())));
+                    channel.register(selector, SelectionKey.OP_READ);
+                } catch (ClosedChannelException e) {
+                    log.error("vote失效。{}", e.getMessage());
                 } catch (IOException e) {
                     log.error("vote回复失败。{}", e.getMessage());
                 }
@@ -245,12 +239,10 @@ public class Node implements Runnable {
                     String key = (String) request.getBody().getOrDefault("key", null);
                     Object o = db.get(key);
                     try {
-                        if (!channel.isOpen() || !channel.isConnected()) {
-                            log.error("Append话说这里为什么链接断了呢");
-                        } else {
-                            channel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(
-                                    new Response(200, "成功找到value", RequestTypeEnum.Append, Map.of(key, 1)))));
-                        }
+                        channel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(new Response(200, RequestTypeEnum.Append, Map.of(key, 1)))));
+                        channel.register(selector, SelectionKey.OP_READ);
+                    } catch (ClosedChannelException e) {
+                        log.error("vote失效。{}", e.getMessage());
                     } catch (IOException e) {
                         log.error("追加数据错误, {}", e.getMessage());
                     }
@@ -261,87 +253,6 @@ public class Node implements Runnable {
                 break;
             }
         }
-    }
-
-    private boolean isLeader() {
-        return leaderAddr != null && leaderAddr.equals(this.address);
-    }
-
-    @Override
-    public void run() {
-        while (leaderAddr == null) {
-            elect();
-        }
-
-        if (isLeader()) {// 如果自己是主领导，就需要给各个节点发送心跳包
-            Runnable r = () -> {
-                for (InetSocketAddress channel : connects.keySet()) {
-                    if (channel.equals(this.address)) continue;// 自己不发
-
-                    int retry = 3;
-                    int i = 0;
-                    Response response = this.socketPoller.request(channel, new Request(HeartBeat, true, Map.of("leader", this.address)));
-                    while (i++ < retry) {
-//                        SocketChannel socketChannel = getChannel(channel);
-//                        if (socketChannel != null && socketChannel.isOpen() && socketChannel.isConnected()) {
-//                            try {
-//                                socketChannel.write(
-//                                        ByteBuffer.wrap(FSTUtil.getConf().asByteArray(new Request(HeartBeat, true, Map.of("leader", this.address)))));
-//                                ByteBuffer byteBuffer = ByteBuffer.allocate(1024);
-//                                int read = socketChannel.read(byteBuffer);
-//                                if (read <= 0) {
-//                                    continue;
-//                                }
-//                                Response o = (Response) FSTUtil.getConf().asObject(byteBuffer.array());// 这里其实拿到response没什么用，但关键是要自己立即读取，
-//                                log.error("收到从follower的心跳回包.{}", o);
-//                                if (AddNewNode == o.getType()) {// 说明之前的机器死掉了，现在活过来了
-//                                    // todo 传输数据
-//                                    socketChannel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(new Request(RequestTypeEnum.Append, true, Map.of()))));
-//                                    ByteBuffer buffer = ByteBuffer.allocate(1024);
-//                                    int read1 = socketChannel.read(buffer);// 这里可以判断是否有问题，
-//                                    if (read1 < 0) {
-//                                        continue;
-//                                    }
-//                                }
-//                                if (!socketChannel.isRegistered()) {
-//                                    socketChannel.register(selector, SelectionKey.OP_READ);
-//                                }
-//                                // 不然就会被read event捕获到，从而再次selectKey，就会乱
-//                                log.error("已经通知了全球人");
-//                                break;
-//                            } catch (ClosedChannelException e) {
-//                                log.error("");
-//                            } catch (IOException e) {
-//                                log.error("这里出错了。", e);
-//                            }
-//                        }
-                    }
-                }
-            };
-            ThreadUtil.getSchedulePool().scheduleAtFixedRate(r, 0, 150, TimeUnit.MILLISECONDS);// 每150ms心跳一下
-        }
-    }
-
-    private SocketChannel getChannel(InetSocketAddress address) {
-        if (!connects.containsKey(address) || (!connects.get(address).isOpen() || !connects.get(address).isConnected())) {
-            synchronized (this) {
-                if (!connects.containsKey(address) || (!connects.get(address).isOpen() || !connects.get(address).isConnected())) {
-                    try {
-                        SocketChannel channel = SocketChannel.open(address);
-                        channel.setOption(StandardSocketOptions.TCP_NODELAY, true);
-                        channel.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
-                        channel.configureBlocking(false);
-                        connects.put(address, channel);
-                    } catch (ConnectException e) {
-//                        log.error("出错啦, 可能是有的主机死掉了，这个直接吞了，{}", e.getMessage());
-                    } catch (IOException e) {
-                        log.error(e);
-                    }
-                }
-                return connects.get(address);
-            }
-        }
-        return connects.get(address);
     }
 
 

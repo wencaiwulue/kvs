@@ -8,36 +8,34 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 @SuppressWarnings("unchecked")
-public class MinPQ<Key> implements Iterable<Key> {
+public class MinimalPriorityQueue<Key> implements Iterable<Key> {
     private Key[] pq;                    // store items at indices 1 to n
     private int n;                       // number of items on priority queue
     private Comparator<Key> comparator;  // optional comparator
 
-    public MinPQ(int initCapacity) {
+    public MinimalPriorityQueue(int initCapacity) {
         pq = (Key[]) new Object[initCapacity + 1];
         n = 0;
     }
 
-    public MinPQ() {
+    public MinimalPriorityQueue() {
         this(1);
     }
 
-    public MinPQ(int initCapacity, Comparator<Key> comparator) {
+    public MinimalPriorityQueue(int initCapacity, Comparator<Key> comparator) {
         this.comparator = comparator;
         pq = (Key[]) new Object[initCapacity + 1];
         n = 0;
     }
 
-    public MinPQ(Comparator<Key> comparator) {
+    public MinimalPriorityQueue(Comparator<Key> comparator) {
         this(1, comparator);
     }
 
-
-    public MinPQ(Key[] keys) {
+    public MinimalPriorityQueue(Key[] keys) {
         n = keys.length;
         pq = (Key[]) new Object[keys.length + 1];
-        for (int i = 0; i < n; i++)
-            pq[i + 1] = keys[i];
+        System.arraycopy(keys, 0, pq, 1, n);
         for (int k = n / 2; k >= 1; k--)
             sink(k);
         assert isMinHeap();
@@ -56,7 +54,6 @@ public class MinPQ<Key> implements Iterable<Key> {
         return pq[1];
     }
 
-    // helper function to double the size of the heap array
     private void resize(int capacity) {
         assert capacity > n;
         Key[] temp = (Key[]) new Object[capacity];
@@ -92,11 +89,6 @@ public class MinPQ<Key> implements Iterable<Key> {
         if (isEmpty()) throw new NoSuchElementException("Priority queue underflow");
         return pq[1];
     }
-
-
-    /***************************************************************************
-     * Helper functions to restore the heap invariant.
-     ***************************************************************************/
 
     private void swim(int k) {
         while (k > 1 && less(k / 2, k)) {
@@ -154,25 +146,17 @@ public class MinPQ<Key> implements Iterable<Key> {
         return isMinHeapOrdered(left) && isMinHeapOrdered(right);
     }
 
-
-    /***************************************************************************
-     * Iterator.
-     ***************************************************************************/
-
     public Iterator<Key> iterator() {
         return new HeapIterator();
     }
 
     private class HeapIterator implements Iterator<Key> {
 
-        // create a new pq
-        private MinPQ<Key> copy;
+        private MinimalPriorityQueue<Key> copy;
 
-        // add all items to copy of heap
-        // takes linear time since already in heap order so no keys move
         public HeapIterator() {
-            if (comparator == null) copy = new MinPQ<>(size());
-            else copy = new MinPQ<>(size(), comparator);
+            if (comparator == null) copy = new MinimalPriorityQueue<>(size());
+            else copy = new MinimalPriorityQueue<>(size(), comparator);
             for (int i = 1; i <= n; i++)
                 copy.insert(pq[i]);
         }
@@ -192,7 +176,7 @@ public class MinPQ<Key> implements Iterable<Key> {
     }
 
     public static void main(String[] args) {
-        MinPQ<String> pq = new MinPQ<>();
+        MinimalPriorityQueue<String> pq = new MinimalPriorityQueue<>();
         List<Integer> strings = IntStream.range(7, 0).boxed().sorted(Comparator.comparing(Object::toString)).collect(Collectors.toList());
         for (Integer string : strings) {
             pq.insert(String.valueOf(string));
