@@ -3,11 +3,12 @@ package db.core;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import thread.FSTUtil;
+import thread.KryoUtil;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.BufferOverflowException;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.ArrayDeque;
@@ -36,6 +37,7 @@ public class BackupUtil {
         try {
             long p = 8L;// 固定的8byte文件头
             try {
+                raf.seek(0);
                 p = raf.readLong();
             } catch (IOException ignored) {
             }
@@ -46,9 +48,9 @@ public class BackupUtil {
             for (Map.Entry<String, Object> next : map.entrySet()) {
                 byte[] key = next.getKey().getBytes();
                 write(mapped, key, l);
-                byte[] value = FSTUtil.getConf().asByteArray(next.getValue());
+                byte[] value = KryoUtil.asByteArray(next.getValue());
                 write(mapped, value, l);
-                if (l.getAcquire() >= Integer.MAX_VALUE - 1024) {// 如果已经还剩1k byte空间的话，需要重新扩容
+                if (l.getAcquire() >= Integer.MAX_VALUE - 1024 * 10) {// 如果已经还剩1k byte空间的话，需要重新扩容
                     mapped = channel.map(FileChannel.MapMode.READ_WRITE, l.getAcquire(), Integer.MAX_VALUE);// 每次扩容都是2g, 这是也fileChannel的限制
                     // 目前主流的linux文件格式最大单体文件大小限制，ext3--16TB，ext4--1EB, 由于这是内存存储器，而RAM可能的容量是4T以下，所以暂时够用
                 }
@@ -70,6 +72,7 @@ public class BackupUtil {
         try {
             long p = 8L;// 固定的8byte文件头
             try {
+                raf.seek(0);
                 p = raf.readLong();
             } catch (IOException ignored) {
             }
@@ -93,9 +96,13 @@ public class BackupUtil {
     }
 
     private static void write(MappedByteBuffer map, byte[] bytes, AtomicInteger l) {
-        map.putInt(bytes.length);
-        map.put(bytes);
-        l.addAndGet(bytes.length + 4);
+        try {
+            map.putInt(bytes.length);
+            map.put(bytes);
+            l.addAndGet(bytes.length + 4);
+        } catch (BufferOverflowException e) {
+            System.out.println(l.get());
+        }
     }
 
     public static void readFromDisk(ConcurrentHashMap<String, Object> map, RandomAccessFile raf) {
@@ -104,21 +111,34 @@ public class BackupUtil {
         try {
             long p = 8L;// 固定的8byte文件头
             try {
+                raf.seek(0);
                 p = raf.readLong();
             } catch (IOException ignored) {
             }
             FileChannel channel = raf.getChannel();
-            MappedByteBuffer mapped = channel.map(FileChannel.MapMode.READ_WRITE, 8, p);// 跳过头位置
-            while (mapped.hasRemaining()) {
-                int kLen = mapped.getInt();
-                byte[] kb = new byte[kLen];
-                mapped.get(kb);
-                String key = new String(kb);
-                int valLen = mapped.getInt();
-                byte[] vb = new byte[valLen];
-                mapped.get(vb);
-                Object value = FSTUtil.getConf().asObject(vb);
-                map.put(key, value);
+
+            int m = Integer.MAX_VALUE >> 0;
+
+            int t = (int) Math.ceil((double) p / m);// 经测试貌似有点儿慢
+
+            for (int i = 0; i < t; i++) {// todo 裁剪的部位刚好是一个byte[]的中间，而不是一个与另一个byte[]之间的空隙
+                MappedByteBuffer mapped = channel.map(FileChannel.MapMode.READ_WRITE, 8 + m * i, (m * (i + 1) > p - 8) ? p - 8 : m * (i + 1));// 跳过头位置
+                byte[] bytes = new byte[1024];
+                while (mapped.hasRemaining()) {
+                    int kLen = mapped.getInt();
+                    if (kLen > bytes.length) {
+                        bytes = new byte[kLen];
+                    }
+                    mapped.get(bytes, 0, kLen);
+                    String key = new String(bytes, 0, kLen);
+                    int valLen = mapped.getInt();
+                    if (valLen > bytes.length) {
+                        bytes = new byte[valLen];
+                    }
+                    mapped.get(bytes, 0, valLen);
+                    Object value = KryoUtil.asObject(bytes, 0, valLen);
+                    map.put(key, value);
+                }
             }
         } catch (IOException e) {
             log.error(e);
@@ -134,14 +154,14 @@ public class BackupUtil {
         ConcurrentHashMap<String, Object> map = new ConcurrentHashMap<>(n);
 
         long start = System.nanoTime();
-        for (int i = 0; i < n; i++) {
-            map.put(String.valueOf(i), i);
-        }
-        System.out.println("存入map花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
-        start = System.nanoTime();
-        snapshotToDisk(map, raf);
-        System.out.println("写入磁盘花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
-        start = System.nanoTime();
+//        for (int i = 0; i < n; i++) {
+//            map.put(String.valueOf(i), i);
+//        }
+//        System.out.println("存入map花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
+//        start = System.nanoTime();
+//        snapshotToDisk(map, raf);
+//        System.out.println("写入磁盘花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
+//        start = System.nanoTime();
         readFromDisk(map, raf);
         System.out.println("写入内存花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
     }
