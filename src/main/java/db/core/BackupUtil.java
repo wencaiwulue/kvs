@@ -3,16 +3,13 @@ package db.core;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.nustaq.serialization.FSTConfiguration;
 import thread.FSTUtil;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.file.FileSystemException;
 import java.util.ArrayDeque;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,21 +23,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class BackupUtil {
     private static final Logger log = LogManager.getLogger(BackupUtil.class);
 
-    public static void main(String[] args) throws IOException {
-        String path = "C:\\Users\\89570\\Documents\\test3.txt";
-        int n = 10000000;
-        ConcurrentHashMap<String, Object> map = new ConcurrentHashMap<>(n);
-        for (int i = 0; i < n; i++) {
-            map.put(String.valueOf(i), i);
-        }
-        long start = System.nanoTime();
-        snapshotToDisk(map, path);
-        System.out.println("写入磁盘花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
-        start = System.nanoTime();
-        readFromDisk(map, path);
-        System.out.println("写入内存花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
-    }
-
     /*
      * 写入磁盘格式为
      * ---------------------------------------------------------------------
@@ -48,109 +30,65 @@ public class BackupUtil {
      * ---------------------------------------------------------------------
      * 固定的8个byte的头，用于存储实际使用大小
      * */
-    public static void snapshotToDisk(ConcurrentHashMap<String, Object> map, String path) throws IOException {
-        if (map.isEmpty()) return;
+    public static void snapshotToDisk(ConcurrentHashMap<String, Object> map, RandomAccessFile raf) {
+        if (map.isEmpty() || raf == null) return;
 
-        File file = new File(path);
-
-        long p = 0;
-        RandomAccessFile raf = null;
         try {
-            if (file.exists()) {
-                raf = new RandomAccessFile(file, "rw");
+            long p = 8L;// 固定的8byte文件头
+            try {
                 p = raf.readLong();
-            } else {
-                boolean newFile = file.createNewFile();
-                if (!newFile) {
-                    throw new FileSystemException("create file failed!!!");
-                }
-                raf = new RandomAccessFile(file, "rw");
-                p = 8L;// 固定的头，标识现在已经写到的位置，单位byte
+            } catch (IOException ignored) {
             }
-        } catch (FileSystemException e) {
-            e.printStackTrace();
-            log.error("这是不可能的把");
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-            log.error("这也是不可能的把");
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
 
-        assert raf != null;
+            FileChannel channel = raf.getChannel();
+            MappedByteBuffer mapped = channel.map(FileChannel.MapMode.READ_WRITE, p, Integer.MAX_VALUE);
+            AtomicInteger l = new AtomicInteger(0);// 本次写入的量
+            for (Map.Entry<String, Object> next : map.entrySet()) {
+                byte[] key = next.getKey().getBytes();
+                write(mapped, key, l);
+                byte[] value = FSTUtil.getConf().asByteArray(next.getValue());
+                write(mapped, value, l);
+                if (l.getAcquire() >= Integer.MAX_VALUE - 1024) {// 如果已经还剩1k byte空间的话，需要重新扩容
+                    mapped = channel.map(FileChannel.MapMode.READ_WRITE, l.getAcquire(), Integer.MAX_VALUE);// 每次扩容都是2g, 这是也fileChannel的限制
+                    // 目前主流的linux文件格式最大单体文件大小限制，ext3--16TB，ext4--1EB, 由于这是内存存储器，而RAM可能的容量是4T以下，所以暂时够用
+                }
+            }
+            mapped.force();
 
-        FileChannel channel = raf.getChannel();
-        MappedByteBuffer mappedByteBuffer = channel.map(FileChannel.MapMode.READ_WRITE, p, Integer.MAX_VALUE);
-        AtomicInteger length = new AtomicInteger(0);// 本次写入的量
-        for (Map.Entry<String, Object> next : map.entrySet()) {
-            byte[] key = next.getKey().getBytes();
-            write(mappedByteBuffer, key, length);
-            byte[] value = FSTUtil.getConf().asByteArray(next.getValue());
-            write(mappedByteBuffer, value, length);
-        }
-        mappedByteBuffer.force();
-
-        try {
             raf.seek(0);
-            raf.writeLong(p + length.get());// 更新头的长度
+            raf.writeLong(p + l.get());// 更新头的长度，也就是目前文件写到的位置
         } catch (IOException e) {
             e.printStackTrace();
             log.error("这里出问题了", e);
-        } finally {
-            raf.close();
         }
     }
 
 
-    public static void appendToDisk(ArrayDeque<byte[]> append, int size, String path) throws IOException {
-        File file = new File(path);
+    public static void appendToDisk(ArrayDeque<byte[]> pipeline, int size, RandomAccessFile raf) {
+        if (raf == null) return;
 
-        long p = 0;
-        RandomAccessFile raf = null;
         try {
-            if (file.exists()) {
-                raf = new RandomAccessFile(file, "rw");
+            long p = 8L;// 固定的8byte文件头
+            try {
                 p = raf.readLong();
-            } else {
-                boolean newFile = file.createNewFile();
-                if (!newFile) {
-                    throw new FileSystemException("create file failed!!!");
+            } catch (IOException ignored) {
+            }
+            FileChannel channel = raf.getChannel();
+            MappedByteBuffer mapped = channel.map(FileChannel.MapMode.READ_WRITE, p, Integer.MAX_VALUE);
+            int length = 0;// 本次写入的量
+            for (int i = 0; i < size; i++) {
+                byte[] bytes = pipeline.pollLast();
+                if (bytes != null) {
+                    mapped.put(bytes);
+                    length += bytes.length;
                 }
-                raf = new RandomAccessFile(file, "rw");
-                p = 8L;// 固定的头，标识现在已经写到的位置，单位byte
             }
-        } catch (FileSystemException e) {
-            e.printStackTrace();
-            log.error("这是不可能的把");
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-            log.error("这也是不可能的把");
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+            mapped.force();
 
-        assert raf != null;
-
-        FileChannel channel = raf.getChannel();
-        MappedByteBuffer mapped = channel.map(FileChannel.MapMode.READ_WRITE, p, Integer.MAX_VALUE);
-        AtomicInteger length = new AtomicInteger(0);// 本次写入的量
-        for (int i = 0; i < size; i++) {
-            byte[] bytes = append.pollLast();
-            if (bytes != null) {
-                mapped.put(bytes);
-                length.addAndGet(bytes.length);
-            }
-        }
-        mapped.force();
-
-        try {
             raf.seek(0);
-            raf.writeLong(p + length.get());// 更新头的长度
+            raf.writeLong(p + length);// 更新头的长度
         } catch (IOException e) {
-            e.printStackTrace();
-            log.error("这里出问题了", e);
-        } finally {
-            raf.close();
+            log.error(e);
         }
     }
 
@@ -160,38 +98,51 @@ public class BackupUtil {
         l.addAndGet(bytes.length + 4);
     }
 
-    private static void readFromDisk(ConcurrentHashMap<String, Object> map, String path) throws IOException {
-        FSTConfiguration conf = FSTConfiguration.createDefaultConfiguration();
-        File file = new File(path);
+    public static void readFromDisk(ConcurrentHashMap<String, Object> map, RandomAccessFile raf) {
+        if (raf == null) return;
 
-        long p;
-        RandomAccessFile randomAccessFile = null;
-        if (file.exists()) {
-            randomAccessFile = new RandomAccessFile(file, "rw");
-            p = randomAccessFile.readLong();
-        } else {
-            p = -1;
+        try {
+            long p = 8L;// 固定的8byte文件头
+            try {
+                p = raf.readLong();
+            } catch (IOException ignored) {
+            }
+            FileChannel channel = raf.getChannel();
+            MappedByteBuffer mapped = channel.map(FileChannel.MapMode.READ_WRITE, 8, p);// 跳过头位置
+            while (mapped.hasRemaining()) {
+                int kLen = mapped.getInt();
+                byte[] kb = new byte[kLen];
+                mapped.get(kb);
+                String key = new String(kb);
+                int valLen = mapped.getInt();
+                byte[] vb = new byte[valLen];
+                mapped.get(vb);
+                Object value = FSTUtil.getConf().asObject(vb);
+                map.put(key, value);
+            }
+        } catch (IOException e) {
+            log.error(e);
         }
+    }
 
-        if (p < 0) {
-            throw new FileNotFoundException("文件没找到");
-        }
+    public static void main(String[] args) throws IOException {
+        String path = "C:\\Users\\89570\\Documents\\test3.txt";
+        File f = new File(path);
+        if (!f.exists()) f.createNewFile();
+        RandomAccessFile raf = new RandomAccessFile(f, "rw");
+        int n =/*1 << 30*/ 1000 * 1000 * 10;
+        ConcurrentHashMap<String, Object> map = new ConcurrentHashMap<>(n);
 
-        FileChannel channel = randomAccessFile.getChannel();
-        MappedByteBuffer mappedByteBuffer = channel.map(FileChannel.MapMode.READ_WRITE, 0, p);
-        mappedByteBuffer.position(8);// 跳过头位置
-        while (mappedByteBuffer.hasRemaining()) {
-            int keyLength = mappedByteBuffer.getInt();
-            byte[] chars = new byte[keyLength];
-            mappedByteBuffer.get(chars);
-            String key = new String(chars);
-            int valueLength = mappedByteBuffer.getInt();
-            byte[] vb = new byte[valueLength];
-            mappedByteBuffer.get(vb);
-            Object value = conf.asObject(vb);
-            map.put(key, value);
+        long start = System.nanoTime();
+        for (int i = 0; i < n; i++) {
+            map.put(String.valueOf(i), i);
         }
-        channel.close();
-        randomAccessFile.close();
+        System.out.println("存入map花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
+        start = System.nanoTime();
+        snapshotToDisk(map, raf);
+        System.out.println("写入磁盘花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
+        start = System.nanoTime();
+        readFromDisk(map, raf);
+        System.out.println("写入内存花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
     }
 }

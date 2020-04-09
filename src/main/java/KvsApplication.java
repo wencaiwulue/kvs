@@ -7,7 +7,7 @@ import java.util.stream.Collectors;
 
 public class KvsApplication {
 
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args) {
         int base = 8000;
         int n = 2;
         List<InetSocketAddress> address = new ArrayList<>(n);

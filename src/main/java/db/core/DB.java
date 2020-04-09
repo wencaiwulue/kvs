@@ -2,10 +2,14 @@ package db.core;
 
 import com.google.common.hash.BloomFilter;
 import com.google.common.hash.Funnels;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import thread.FSTUtil;
 import thread.ThreadUtil;
 
+import java.io.File;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
@@ -22,54 +26,78 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * @since 4/1/2020 10:53
  */
 public class DB {
+    private static final Logger log = LogManager.getLogger(DB.class);
+
     private int size = 1000 * 1000;// 缓冲区大小
-    private int threshold = (int) (size * 0.8);// 如果超过这个阈值，就启动备份写入流程
-    private int thresholdStop = (int) (size * 0.2); // 低于这个值就停止写入
+    private int thresholdStart = (int) (size * 0.8);// 如果超过这个阈值，就启动备份写入流程
+    private int thresholdStop = (int) (size * 0.2); // 低于这个值就停止写入，因为管道是不停写入的，所以基本不会出现管道为空的情况
     private ArrayDeque<byte[]> buffer = new ArrayDeque<>(size);// 这里是缓冲区，也就是每隔一段时间备份append的数据，或者这个buffer满了就备份数据
 
-    private byte mode = 1; // 备份方式为增量还是快照，或者是混合模式
+    private byte mode = 1; // 备份方式为增量还是快照，或者是混合模式, 0--append, 1--snapshot, 2--append+snapshot
     private volatile long lastAppendBackupTime;
     private final long appendRate = 1000 * 1000; // 每一秒append一次
     private volatile long lastSnapshotBackupTime;
     private final long snapshotRate = 60 * appendRate; // 每一分钟snapshot一下
 
-    private String path;
     private ConcurrentHashMap<String, Object> map;
     private MinimalPriorityQueue<ExpireKey> expireKeys;
     private static ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+    private String path;
+    private RandomAccessFile raf;
     // 可以判断是否存在kvs中，
     @SuppressWarnings("all")
     private static BloomFilter<String> filter = BloomFilter.create(Funnels.stringFunnel(StandardCharsets.UTF_8), Integer.MAX_VALUE);
 
     public DB(String fileSuffix) {
-        this.map = new ConcurrentHashMap<>();
+        this.map = new ConcurrentHashMap<>(/*1 << 30*/); // 这是hashMap的容量
         this.expireKeys = new MinimalPriorityQueue<>();
-        this.path = "C:\\Users\\89570\\Documents\\kvs_" + fileSuffix + "_data.db";
+        this.path = "C:\\Users\\89570\\Documents\\kvs_" + fileSuffix + ".db";
+        initAndReadIntoMemory();
         checkExpireKey();
         writeDataToDisk();
     }
 
+    @SuppressWarnings("all")
+    public void initAndReadIntoMemory() {
+        if (raf == null) {
+            synchronized (this) {
+                if (raf == null) {
+                    try {
+                        File f = new File(path);
+                        if (!f.exists()) f.createNewFile();
+                        raf = new RandomAccessFile(f, "rw");
+                    } catch (IOException e) {
+                        log.error(e);
+                    }
+                }
+            }
+        }
+        BackupUtil.readFromDisk(map, raf);
+    }
+
     private void writeDataToDisk() {
-        Runnable r = () -> {
-            try {
-                int size = buffer.size();
-                if (size > threshold || lastAppendBackupTime + appendRate < System.nanoTime()) {
-                    BackupUtil.appendToDisk(buffer, size - thresholdStop, this.path);
+        Runnable backup = () -> {
+            int size = buffer.size();
+            if (mode == 0 || mode == 2) {
+                if (size > thresholdStart || lastAppendBackupTime + appendRate < System.nanoTime()) {
+                    BackupUtil.appendToDisk(buffer, size - thresholdStop, raf);
                     lastAppendBackupTime = System.nanoTime();
-                } else if (lastSnapshotBackupTime + snapshotRate < System.nanoTime()) {
-                    BackupUtil.snapshotToDisk(map, this.path);
+                }
+            }
+
+            if (mode == 1 || mode == 2) {
+                if (lastSnapshotBackupTime + snapshotRate < System.nanoTime()) {
+                    BackupUtil.snapshotToDisk(map, raf);
                     lastSnapshotBackupTime = System.nanoTime();
                 }
-            } catch (IOException e) {
-                e.printStackTrace();
             }
         };
-        ThreadUtil.getSchedulePool().scheduleAtFixedRate(r, 0, 500, TimeUnit.MILLISECONDS);
+        ThreadUtil.getSchedulePool().scheduleAtFixedRate(backup, 0, appendRate / 2, TimeUnit.NANOSECONDS);// 没半秒检查一次
     }
 
     // check key expire every seconds
     private void checkExpireKey() {
-        Runnable runnable = () -> {
+        Runnable check = () -> {
             ReentrantReadWriteLock.WriteLock writeLock = lock.writeLock();
             while (!expireKeys.isEmpty()) {
                 ExpireKey expireKey = expireKeys.peekMin();
@@ -87,7 +115,7 @@ public class DB {
             }
         };
 
-        ThreadUtil.getSchedulePool().scheduleAtFixedRate(runnable, 0, 1, TimeUnit.SECONDS);
+        ThreadUtil.getSchedulePool().scheduleAtFixedRate(check, 0, 1, TimeUnit.SECONDS);
     }
 
     public Object get(String key) {
