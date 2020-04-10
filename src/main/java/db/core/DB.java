@@ -4,8 +4,8 @@ import com.google.common.hash.BloomFilter;
 import com.google.common.hash.Funnels;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import thread.FSTUtil;
-import thread.ThreadUtil;
+import util.FSTUtil;
+import util.ThreadUtil;
 
 import java.io.File;
 import java.io.IOException;

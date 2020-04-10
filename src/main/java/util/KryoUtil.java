@@ -1,4 +1,4 @@
-package thread;
+package util;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.KryoException;

@@ -2,7 +2,7 @@ package rpc;
 
 
 import raft.Node;
-import thread.ThreadUtil;
+import util.ThreadUtil;
 
 import java.net.InetSocketAddress;
 import java.util.Arrays;

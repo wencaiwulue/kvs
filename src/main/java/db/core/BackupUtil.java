@@ -4,7 +4,7 @@ package db.core;
 import com.esotericsoftware.kryo.KryoException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import thread.KryoUtil;
+import util.KryoUtil;
 
 import java.io.File;
 import java.io.IOException;

@@ -4,7 +4,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import rpc.model.Request;
 import rpc.model.Response;
-import thread.FSTUtil;
+import util.FSTUtil;
 
 import java.io.IOException;
 import java.net.ConnectException;

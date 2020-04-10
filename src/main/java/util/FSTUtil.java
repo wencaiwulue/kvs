@@ -1,4 +1,4 @@
-package thread;
+package util;
 
 import org.nustaq.serialization.FSTConfiguration;
 

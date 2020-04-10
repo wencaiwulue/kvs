@@ -1,5 +1,5 @@
 
-package thread;
+package util;
 
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
