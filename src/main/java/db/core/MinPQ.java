@@ -8,31 +8,31 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 @SuppressWarnings("unchecked")
-public class MinimalPriorityQueue<Key> implements Iterable<Key> {
+public class MinPQ<Key> implements Iterable<Key> {
     private Key[] pq;                    // store items at indices 1 to n
     private int n;                       // number of items on priority queue
     private Comparator<Key> comparator;  // optional comparator
 
-    public MinimalPriorityQueue(int initCapacity) {
+    public MinPQ(int initCapacity) {
         pq = (Key[]) new Object[initCapacity + 1];
         n = 0;
     }
 
-    public MinimalPriorityQueue() {
+    public MinPQ() {
         this(1);
     }
 
-    public MinimalPriorityQueue(int initCapacity, Comparator<Key> comparator) {
+    public MinPQ(int initCapacity, Comparator<Key> comparator) {
         this.comparator = comparator;
         pq = (Key[]) new Object[initCapacity + 1];
         n = 0;
     }
 
-    public MinimalPriorityQueue(Comparator<Key> comparator) {
+    public MinPQ(Comparator<Key> comparator) {
         this(1, comparator);
     }
 
-    public MinimalPriorityQueue(Key[] keys) {
+    public MinPQ(Key[] keys) {
         n = keys.length;
         pq = (Key[]) new Object[keys.length + 1];
         System.arraycopy(keys, 0, pq, 1, n);
@@ -146,17 +146,22 @@ public class MinimalPriorityQueue<Key> implements Iterable<Key> {
         return isMinHeapOrdered(left) && isMinHeapOrdered(right);
     }
 
+    public void remove(Key key) {
+
+    }
+
     public Iterator<Key> iterator() {
         return new HeapIterator();
     }
 
     private class HeapIterator implements Iterator<Key> {
 
-        private MinimalPriorityQueue<Key> copy;
+        private MinPQ<Key> copy;
+        private Key current;
 
         public HeapIterator() {
-            if (comparator == null) copy = new MinimalPriorityQueue<>(size());
-            else copy = new MinimalPriorityQueue<>(size(), comparator);
+            if (comparator == null) copy = new MinPQ<>(size());
+            else copy = new MinPQ<>(size(), comparator);
             for (int i = 1; i <= n; i++)
                 copy.insert(pq[i]);
         }
@@ -171,12 +176,12 @@ public class MinimalPriorityQueue<Key> implements Iterable<Key> {
 
         public Key next() {
             if (!hasNext()) throw new NoSuchElementException();
-            return copy.delMin();
+            return current = copy.delMin();
         }
     }
 
     public static void main(String[] args) {
-        MinimalPriorityQueue<String> pq = new MinimalPriorityQueue<>();
+        MinPQ<String> pq = new MinPQ<>();
         List<Integer> strings = IntStream.range(7, 0).boxed().sorted(Comparator.comparing(Object::toString)).collect(Collectors.toList());
         for (Integer string : strings) {
             pq.insert(String.valueOf(string));

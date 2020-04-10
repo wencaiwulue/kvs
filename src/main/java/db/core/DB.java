@@ -33,14 +33,14 @@ public class DB {
     private int thresholdStop = (int) (size * 0.2); // 低于这个值就停止写入，因为管道是不停写入的，所以基本不会出现管道为空的情况
     private ArrayDeque<byte[]> buffer = new ArrayDeque<>(size);// 这里是缓冲区，也就是每隔一段时间备份append的数据，或者这个buffer满了就备份数据
 
-    private byte mode = 1; // 备份方式为增量还是快照，或者是混合模式, 0--append, 1--snapshot, 2--append+snapshot
+    private byte mode = 2; // 备份方式为增量还是快照，或者是混合模式, 0--append, 1--snapshot, 2--append+snapshot
     private volatile long lastAppendBackupTime;
     private final long appendRate = 1000 * 1000; // 每一秒append一次
     private volatile long lastSnapshotBackupTime;
     private final long snapshotRate = 60 * appendRate; // 每一分钟snapshot一下
 
     private ConcurrentHashMap<String, Object> map;
-    private MinimalPriorityQueue<ExpireKey> expireKeys;
+    private MinPQ<ExpireKey> expireKeys;
     private static ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
     private String path;
     private RandomAccessFile raf;
@@ -50,7 +50,7 @@ public class DB {
 
     public DB(String fileSuffix) {
         this.map = new ConcurrentHashMap<>(/*1 << 30*/); // 这是hashMap的容量
-        this.expireKeys = new MinimalPriorityQueue<>();
+        this.expireKeys = new MinPQ<>();
         this.path = "C:\\Users\\89570\\Documents\\kvs_" + fileSuffix + ".db";
         initAndReadIntoMemory();
         checkExpireKey();
@@ -72,7 +72,12 @@ public class DB {
                 }
             }
         }
-        BackupUtil.readFromDisk(map, raf);
+        lock.writeLock().lock();
+        try {
+            BackupUtil.readFromDisk(map, raf);
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     private void writeDataToDisk() {
@@ -80,14 +85,24 @@ public class DB {
             int size = buffer.size();
             if (mode == 0 || mode == 2) {
                 if (size > thresholdStart || lastAppendBackupTime + appendRate < System.nanoTime()) {
-                    BackupUtil.appendToDisk(buffer, size - thresholdStop, raf);
+                    lock.writeLock().lock();
+                    try {
+                        BackupUtil.appendToDisk(buffer, size - thresholdStop, raf);
+                    } finally {
+                        lock.writeLock().unlock();
+                    }
                     lastAppendBackupTime = System.nanoTime();
                 }
             }
 
             if (mode == 1 || mode == 2) {
                 if (lastSnapshotBackupTime + snapshotRate < System.nanoTime()) {
-                    BackupUtil.snapshotToDisk(map, raf);
+                    lock.writeLock().lock();
+                    try {
+                        BackupUtil.snapshotToDisk(map, raf);
+                    } finally {
+                        lock.writeLock().unlock();
+                    }
                     lastSnapshotBackupTime = System.nanoTime();
                 }
             }

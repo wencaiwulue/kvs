@@ -1,6 +1,7 @@
 
 package db.core;
 
+import com.esotericsoftware.kryo.KryoException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import thread.KryoUtil;
@@ -9,6 +10,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.BufferOverflowException;
+import java.nio.BufferUnderflowException;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.ArrayDeque;
@@ -31,7 +33,7 @@ public class BackupUtil {
      * ---------------------------------------------------------------------
      * 固定的8个byte的头，用于存储实际使用大小
      * */
-    public static void snapshotToDisk(ConcurrentHashMap<String, Object> map, RandomAccessFile raf) {
+    public static synchronized void snapshotToDisk(ConcurrentHashMap<String, Object> map, RandomAccessFile raf) {
         if (map.isEmpty() || raf == null) return;
 
         try {
@@ -66,7 +68,7 @@ public class BackupUtil {
     }
 
 
-    public static void appendToDisk(ArrayDeque<byte[]> pipeline, int size, RandomAccessFile raf) {
+    public static synchronized void appendToDisk(ArrayDeque<byte[]> pipeline, int size, RandomAccessFile raf) {
         if (raf == null) return;
 
         try {
@@ -105,7 +107,7 @@ public class BackupUtil {
         }
     }
 
-    public static void readFromDisk(ConcurrentHashMap<String, Object> map, RandomAccessFile raf) {
+    public static synchronized void readFromDisk(ConcurrentHashMap<String, Object> map, RandomAccessFile raf) {
         if (raf == null) return;
 
         try {
@@ -117,27 +119,44 @@ public class BackupUtil {
             }
             FileChannel channel = raf.getChannel();
 
-            int m = Integer.MAX_VALUE >> 0;
+            int m = Integer.MAX_VALUE >> 6;// 裁剪的大小
 
-            int t = (int) Math.ceil((double) p / m);// 经测试貌似有点儿慢
+            int t = (int) Math.ceil((double) (p - 8) / m);// 经测试貌似有点儿慢
 
+            long len = 0;
+            long d = 0;
+
+            byte[] bytes = new byte[1024];
             for (int i = 0; i < t; i++) {// todo 裁剪的部位刚好是一个byte[]的中间，而不是一个与另一个byte[]之间的空隙
-                MappedByteBuffer mapped = channel.map(FileChannel.MapMode.READ_WRITE, 8 + m * i, (m * (i + 1) > p - 8) ? p - 8 : m * (i + 1));// 跳过头位置
-                byte[] bytes = new byte[1024];
-                while (mapped.hasRemaining()) {
-                    int kLen = mapped.getInt();
-                    if (kLen > bytes.length) {
-                        bytes = new byte[kLen];
+                long position = 8 + m * i - d;
+                long size = (m * (i + 1) > p - 8) ? p - 8 : m * (i + 1);
+                MappedByteBuffer mapped = channel.map(FileChannel.MapMode.READ_WRITE, position, size);// 跳过头位置
+                int a = 0, b = 0, c = 0;
+                d = 0;
+                len = 0;
+                while (mapped.hasRemaining() /*&& mapped.remaining() >= 1024 * 10*/) {
+                    len += a + b + c * 2;
+                    try {
+                        int kLen = mapped.getInt();
+                        if (kLen > bytes.length) {
+                            bytes = new byte[kLen];
+                        }
+                        mapped.get(bytes, 0, kLen);
+                        String key = new String(bytes, 0, kLen);
+                        int valLen = mapped.getInt();
+                        if (valLen > bytes.length) {
+                            bytes = new byte[valLen];
+                        }
+                        mapped.get(bytes, 0, valLen);
+                        Object value = KryoUtil.asObject(bytes, 0, valLen);
+                        map.put(key, value);
+                        a = kLen;
+                        b = valLen;
+                        c = 4;
+                    } catch (BufferUnderflowException | IndexOutOfBoundsException | KryoException e) {
+                        d = size - len;
+                        break;
                     }
-                    mapped.get(bytes, 0, kLen);
-                    String key = new String(bytes, 0, kLen);
-                    int valLen = mapped.getInt();
-                    if (valLen > bytes.length) {
-                        bytes = new byte[valLen];
-                    }
-                    mapped.get(bytes, 0, valLen);
-                    Object value = KryoUtil.asObject(bytes, 0, valLen);
-                    map.put(key, value);
                 }
             }
         } catch (IOException e) {
@@ -150,19 +169,27 @@ public class BackupUtil {
         File f = new File(path);
         if (!f.exists()) f.createNewFile();
         RandomAccessFile raf = new RandomAccessFile(f, "rw");
-        int n =/*1 << 30*/ 1000 * 1000 * 10;
+        int n =/*1 << 30*/ 1000 * 1000 * 5;
         ConcurrentHashMap<String, Object> map = new ConcurrentHashMap<>(n);
+        ConcurrentHashMap<String, Object> map1 = new ConcurrentHashMap<>(n);
 
         long start = System.nanoTime();
-//        for (int i = 0; i < n; i++) {
-//            map.put(String.valueOf(i), i);
-//        }
-//        System.out.println("存入map花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
-//        start = System.nanoTime();
-//        snapshotToDisk(map, raf);
-//        System.out.println("写入磁盘花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
-//        start = System.nanoTime();
-        readFromDisk(map, raf);
+        for (int i = 0; i < n; i++) {
+            map.put(String.valueOf(i), i);
+        }
+        System.out.println("存入map花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
+        start = System.nanoTime();
+        snapshotToDisk(map, raf);
+        System.out.println("写入磁盘花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
+        start = System.nanoTime();
+        readFromDisk(map1, raf);
         System.out.println("写入内存花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
+        int m = 0;
+        for (int i = 0; i < n; i++) {
+            if (!map1.containsKey(String.valueOf(i)) || (int) map1.get(String.valueOf(i)) != i) {
+                m++;
+            }
+        }
+        System.out.println("不匹配的数量为：" + m);
     }
 }

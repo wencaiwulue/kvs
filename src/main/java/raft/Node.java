@@ -2,7 +2,6 @@ package raft;
 
 import db.core.DB;
 import lombok.Data;
-import lombok.SneakyThrows;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import rpc.Client;
@@ -10,6 +9,7 @@ import rpc.model.Request;
 import rpc.model.RequestTypeEnum;
 import rpc.model.Response;
 import thread.FSTUtil;
+import thread.KryoUtil;
 import thread.ThreadUtil;
 
 import java.io.IOException;
@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -42,7 +43,7 @@ public class Node implements Runnable {
 
     private DB db;
     private StateEnum state = StateEnum.Follower;// 默认是follower角色
-    private Long timeout;//150ms -- 300ms randomized  超时时间,选举的时候，如果主节点挂了，则所有的节点开始timeout，然后最先timeout结束的节点变为candidate，
+    private long timeout = 150;//150ms -- 300ms randomized  超时时间,选举的时候，如果主节点挂了，则所有的节点开始timeout，然后最先timeout结束的节点变为candidate，
     // 参见竞选，然后发送竞选类型的请求，如果半数以上统一，则广播给所有人，
     // leader回一直发送心跳包，如果timeout后还没有发现心跳包来，就说明leader挂了，需要开始选举
 
@@ -55,7 +56,6 @@ public class Node implements Runnable {
     private InetSocketAddress lastVoteFor;// 判断当前选举是否已经投票
     private volatile InetSocketAddress leaderAddr;//leader节点信息，因为所有的数据处理都需要leader来操作。
 
-    @SneakyThrows
     public Node(InetSocketAddress address, List<InetSocketAddress> peerAddress) {
         this.address = address;
         this.peerAddress = peerAddress;
@@ -63,22 +63,22 @@ public class Node implements Runnable {
     }
 
 
-    @SneakyThrows
     @Override
     public void run() {
         Runnable elect = () -> {
-            if (leaderAddr == null || System.nanoTime() > lastHeartBeat + heartBeatRate) {
+            int i = ThreadLocalRandom.current().nextInt(150);// 0-150ms, 随机一段时间，避免同时选举
+            if (leaderAddr == null || System.nanoTime() > lastHeartBeat + heartBeatRate + i) {// 很久没有来自leader的心跳，说明leader卒了，选举开始
                 elect();
             }
         };
         ThreadUtil.getSchedulePool().scheduleAtFixedRate(elect, 0, 150, TimeUnit.MILLISECONDS);// 定期检查leader是不是死掉了
 
-        Runnable heartBeats = () -> {
+        Runnable heartbeats = () -> {
             if (isLeader()) {// 如果自己是主领导，就需要给各个节点发送心跳包
                 for (InetSocketAddress address : peerAddress) {
                     if (address.equals(this.address)) continue;// 自己不发
 
-                    Response response = Client.doRequest(address, new Request(HeartBeat, Map.of("leader", this.address)));
+                    Response response = Client.doRequest(address, new Request(HeartBeat, Map.of("leader", this.address, "term", this.term)));
                     log.error("收到从follower的心跳回包.{}", response);
                     if (response != null && response.getCode() == AddNewNode) {// 说明之前的机器死掉了，现在活过来了
                         // todo 传输数据
@@ -89,22 +89,14 @@ public class Node implements Runnable {
                 }
             }
         };
-        ThreadUtil.getSchedulePool().scheduleAtFixedRate(heartBeats, 0, 150, TimeUnit.MILLISECONDS);// 每150ms心跳一下
+        ThreadUtil.getSchedulePool().scheduleAtFixedRate(heartbeats, 0, heartBeatRate, TimeUnit.MILLISECONDS);// 每150ms心跳一下
     }
 
     private void elect() {
-        int i = new Random(47).nextInt(150);// 0-150ms
-        try {
-            Thread.sleep(i + 150);// 睡一会儿，等待选举
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-        if (leaderAddr != null && System.nanoTime() < lastHeartBeat + heartBeatRate) return;
-
         log.error("开始选举");
         AtomicInteger ai = new AtomicInteger(1);//先给自己投一票
         state = StateEnum.Candidate;// 改变状态为candidate
-        for (InetSocketAddress addr : peerAddress) {// 这里可以使用callable + future，并行加速处理
+        for (InetSocketAddress addr : peerAddress) {// todo 这里可以使用callable + future，并行加速处理
             if (addr.equals(address)) continue;
             // todo 这里写消息的时候，可以使用DirectByteBuffer实现零拷贝
             Response response = Client.doRequest(addr, new Request(Vote, Map.of("term", this.term + 1)));
@@ -117,7 +109,7 @@ public class Node implements Runnable {
         }
         if (ai.get() > Math.ceil(peerAddress.size() / 2D)) {// 超过半数了，我成功了
             log.error("选举成功，选出leader了{}", this.address);
-            this.term = this.term + 1;
+            this.term += this.term + 1;
             this.leaderAddr = this.address;
             this.state = StateEnum.Leader;
         } else {
@@ -142,20 +134,20 @@ public class Node implements Runnable {
             case HeartBeat: {
                 lastHeartBeat = System.nanoTime();
                 InetSocketAddress leaderAddr = (InetSocketAddress) request.getBody().get("leader");
-                log.error("已经收到来自leader的心跳包, 其中包含了主节点的信息，{}", leaderAddr);
-                if (leaderAddr != null) {// 说明自己已经out了，需要更新主节点信息
+                int term = (int) request.getBody().get("term");
+                log.error("已经收到来自leader的心跳包, 其中包含了主节点的信息，{}, term:{}", leaderAddr, term);
+                if (term > this.term) {// 说明自己已经out了，需要更新主节点信息
                     this.leaderAddr = leaderAddr;
                     this.state = StateEnum.Follower;
-                    try {
-                        channel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(new Response(AddNewNode, 0, null))));// 先构成一次完整的rpc
-                        channel.register(selector, SelectionKey.OP_READ);
-                    } catch (ClosedChannelException e) {
-                        log.error("心跳包这里的channel又失效了");
-                    } catch (IOException e) {
-                        log.error("心跳包回复失败。{}", e.getMessage());
-                    }
-                } else {
-                    log.error("没有从心跳包中取到leader信息");
+                    this.term = term;
+                }
+                try {
+                    channel.write(ByteBuffer.wrap(KryoUtil.asByteArray(new Response(AddNewNode, 0, null))));// 先构成一次完整的rpc
+                    channel.register(selector, SelectionKey.OP_READ);
+                } catch (ClosedChannelException e) {
+                    log.error("心跳包这里的channel又失效了");
+                } catch (IOException e) {
+                    log.error("心跳包回复失败。{}", e.getMessage());
                 }
                 break;
             }
