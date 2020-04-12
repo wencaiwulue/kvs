@@ -4,7 +4,7 @@ package rpc.model;
  * @author naison
  * @since 3/14/2020 19:40
  */
-public interface RequestTypeEnum {
+public interface RequestType {
     // 广播新的leader使用
     int HeartBeat = 1;//心跳包, leader发送给非leader的所有节点
 

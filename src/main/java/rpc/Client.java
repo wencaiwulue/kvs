@@ -2,7 +2,6 @@ package rpc;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import rpc.model.Request;
 import rpc.model.Response;
 import util.FSTUtil;
 
@@ -59,7 +58,7 @@ public class Client {
         return connections.get(remote);
     }
 
-    public static Response doRequest(InetSocketAddress remote, Request request) {
+    public static Object doRequest(InetSocketAddress remote, Object request) {
         if (remote == null) return null;
 
         SocketChannel channel = getConnection(remote);
@@ -83,7 +82,7 @@ public class Client {
         return null;
     }
 
-    private static Response getRes(SocketChannel channel) throws IOException {
+    private static Object getRes(SocketChannel channel) throws IOException {
         int retry = 3;
         int t = 0;
         while (t++ < retry) {
@@ -98,7 +97,7 @@ public class Client {
                             ByteBuffer buffer = ByteBuffer.allocate(1024);// todo optimize
                             int read = ((SocketChannel) key.channel()).read(buffer);
                             if (read > 0) {
-                                return (Response) FSTUtil.getConf().asObject(buffer.array());
+                                return FSTUtil.getConf().asObject(buffer.array());
                             }
                         } else if (key.isAcceptable() || key.isConnectable() || key.isWritable()) {
                             log.error("这也是魔鬼");

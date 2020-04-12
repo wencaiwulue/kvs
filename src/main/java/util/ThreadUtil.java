@@ -11,20 +11,15 @@ import java.util.concurrent.TimeUnit;
  * @since 3/25/2020 17:21
  */
 public class ThreadUtil {
-    private static final ThreadPoolExecutor pool;
-    private static final ScheduledThreadPoolExecutor schedulePool;
+    private static final ThreadPoolExecutor pool = new ThreadPoolExecutor(Util.MIN_THREAD_POOL_SIZE, Util.MAX_THREAD_POOL_SIZE, 60L, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
 
-    static {
-        int n = Math.max(Runtime.getRuntime().availableProcessors(), 3);// minimal thread amount is 3
-        pool = new ThreadPoolExecutor(n, n * 2, 60L, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
-        schedulePool = new ScheduledThreadPoolExecutor(1);
-    }
+    private static final ScheduledThreadPoolExecutor scheduledPool = new ScheduledThreadPoolExecutor(Util.MAX_SCHEDULED_THREAD_POOL_SIZE);
 
-    public static ThreadPoolExecutor getPool() {
+    public static ThreadPoolExecutor getThreadPool() {
         return pool;
     }
 
-    public static ScheduledThreadPoolExecutor getSchedulePool() {
-        return schedulePool;
+    public static ScheduledThreadPoolExecutor getScheduledThreadPool() {
+        return scheduledPool;
     }
 }

@@ -1,13 +1,13 @@
 import rpc.App;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 public class KvsApplication {
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         int base = 8000;
         int n = 2;
         List<InetSocketAddress> address = new ArrayList<>(n);
@@ -16,7 +16,7 @@ public class KvsApplication {
         }
 
         for (InetSocketAddress s : address) {
-            App app = new App(s, address.stream().filter(e -> !e.equals(s)).collect(Collectors.toList()));// 邻居不包含自己
+            App app = new App(s, new ArrayList<>());// 邻居不包含自己
             app.start();
         }
     }

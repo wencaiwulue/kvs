@@ -15,6 +15,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
@@ -39,19 +41,21 @@ public class DB {
     private volatile long lastSnapshotBackupTime;
     private final long snapshotRate = 60 * appendRate; // 每一分钟snapshot一下
 
-    private ConcurrentHashMap<String, Object> map;
+    private ConcurrentHashMap<String, Object> map;// RockDB or LevelDB?
     private MinPQ<ExpireKey> expireKeys;
-    private static ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
-    private String path;
+    private final ReadWriteLock lock = new ReentrantReadWriteLock();
+    private final Lock readLock = this.lock.readLock();
+    private final Lock writeLock = this.lock.writeLock();
+    private String dbPath;
     private RandomAccessFile raf;
     // 可以判断是否存在kvs中，
     @SuppressWarnings("all")
     private static BloomFilter<String> filter = BloomFilter.create(Funnels.stringFunnel(StandardCharsets.UTF_8), Integer.MAX_VALUE);
 
-    public DB(String fileSuffix) {
+    public DB(String dbPath) {
         this.map = new ConcurrentHashMap<>(/*1 << 30*/); // 这是hashMap的容量
         this.expireKeys = new MinPQ<>();
-        this.path = "C:\\Users\\89570\\Documents\\kvs_" + fileSuffix + ".db";
+        this.dbPath = dbPath;
         initAndReadIntoMemory();
         checkExpireKey();
         writeDataToDisk();
@@ -63,7 +67,7 @@ public class DB {
             synchronized (this) {
                 if (raf == null) {
                     try {
-                        File f = new File(path);
+                        File f = new File(dbPath);
                         if (!f.exists()) f.createNewFile();
                         raf = new RandomAccessFile(f, "rw");
                     } catch (IOException e) {
@@ -72,11 +76,11 @@ public class DB {
                 }
             }
         }
-        lock.writeLock().lock();
+        writeLock.lock();
         try {
             BackupUtil.readFromDisk(map, raf);
         } finally {
-            lock.writeLock().unlock();
+            writeLock.unlock();
         }
     }
 
@@ -85,11 +89,11 @@ public class DB {
             int size = buffer.size();
             if (mode == 0 || mode == 2) {
                 if (size > thresholdStart || lastAppendBackupTime + appendRate < System.nanoTime()) {
-                    lock.writeLock().lock();
+                    writeLock.lock();
                     try {
-                        BackupUtil.appendToDisk(buffer, size - thresholdStop, raf);
+//                        BackupUtil.appendToDisk(buffer, size - thresholdStop, raf);
                     } finally {
-                        lock.writeLock().unlock();
+                        writeLock.unlock();
                     }
                     lastAppendBackupTime = System.nanoTime();
                 }
@@ -99,7 +103,7 @@ public class DB {
                 if (lastSnapshotBackupTime + snapshotRate < System.nanoTime()) {
                     lock.writeLock().lock();
                     try {
-                        BackupUtil.snapshotToDisk(map, raf);
+//                        BackupUtil.snapshotToDisk(map, raf);
                     } finally {
                         lock.writeLock().unlock();
                     }
@@ -107,13 +111,12 @@ public class DB {
                 }
             }
         };
-        ThreadUtil.getSchedulePool().scheduleAtFixedRate(backup, 0, appendRate / 2, TimeUnit.NANOSECONDS);// 没半秒检查一次
+        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(backup, 0, appendRate / 2, TimeUnit.NANOSECONDS);// 没半秒检查一次
     }
 
     // check key expire every seconds
     private void checkExpireKey() {
         Runnable check = () -> {
-            ReentrantReadWriteLock.WriteLock writeLock = lock.writeLock();
             while (!expireKeys.isEmpty()) {
                 ExpireKey expireKey = expireKeys.peekMin();
                 if (System.nanoTime() >= expireKey.getExpire()) {
@@ -130,7 +133,7 @@ public class DB {
             }
         };
 
-        ThreadUtil.getSchedulePool().scheduleAtFixedRate(check, 0, 1, TimeUnit.SECONDS);
+        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(check, 0, 1, TimeUnit.SECONDS);
     }
 
     public Object get(String key) {

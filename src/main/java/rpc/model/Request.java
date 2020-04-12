@@ -1,20 +1,11 @@
 package rpc.model;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
 import java.io.Serializable;
-import java.util.Map;
 
 /**
  * @author naison
- * @since 3/15/2020 11:27
+ * @since 4/12/2020 21:07
  */
-@Data
-@AllArgsConstructor
-@NoArgsConstructor
-public class Request implements Serializable {
-    int type;
-    Map<String, Object> body;
+public abstract class Request implements Serializable {
+    private static final long serialVersionUID = 988750245807348185L;
 }
