@@ -138,7 +138,12 @@ public class DB {
     }
 
     public Object get(String key) {
-        return map.get(key);
+        this.readLock.lock();
+        try {
+            return map.get(key);
+        } finally {
+            this.readLock.unlock();
+        }
     }
 
     public void set(String key, Object value) {
@@ -157,7 +162,12 @@ public class DB {
     }
 
     public void remove(String key) {
-        map.remove(key);// expire key 可以不用删除
+        this.writeLock.unlock();
+        try {
+            map.remove(key);// expire key 可以不用删除
+        } finally {
+            this.writeLock.unlock();
+        }
     }
 
     public void expireKey(String key, int expire, TimeUnit unit) {

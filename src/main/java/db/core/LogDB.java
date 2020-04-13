@@ -141,10 +141,6 @@ public class LogDB {
         map.remove(key);
     }
 
-    public int getLastLogIndex() {
-        return lastLogIndex;
-    }
-
     public int getLastLogTerm() {
         return 0;
     }
