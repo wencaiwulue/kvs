@@ -47,7 +47,7 @@ public class HeartbeatRequestProcessor implements Processor {
             node.lastVoteFor = null;
         }
         try {
-            channel.write(ByteBuffer.wrap(KryoUtil.asByteArray(new HeartbeatResponse())));// 先构成一次完整的rpc
+            channel.write(ByteBuffer.wrap(KryoUtil.asByteArray(new HeartbeatResponse())));
         } catch (ClosedChannelException e) {
             log.error("心跳包这里的channel又失效了");
         } catch (IOException e) {

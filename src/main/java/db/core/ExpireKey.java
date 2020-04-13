@@ -24,6 +24,7 @@ public class ExpireKey implements Comparable {
         return expire;
     }
 
+    @SuppressWarnings("all")
     @Override
     public int compareTo(Object o) {
         return Long.compare(expire, ((ExpireKey) o).expire);

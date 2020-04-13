@@ -34,8 +34,8 @@ public class VoteRequestProcessor implements Processor {
             VoteRequest request = (VoteRequest) req;
             log.error("收到vote请求.from:{} to {}, vote info:{}", request.getPeer(), node.getAddress(), request);
             Response response;
-            int i = Long.compare(request.getLastLogTerm(), node.getLogDB().getLastLogTerm());
-            if (i == 0) i = Long.compare(request.getLastLogIndex(), node.getLogDB().getLastLogIndex());
+            int i = Long.compare(request.getLastLogTerm(), node.getLogdb().getLastLogTerm());
+            if (i == 0) i = Long.compare(request.getLastLogIndex(), node.getLogdb().getLastLogIndex());
             if (i >= 0 && node.lastVoteFor == null) {// 还没投过票
                 node.lastVoteFor = request.getPeer();
                 node.currTerm = request.getTerm();
@@ -45,6 +45,7 @@ public class VoteRequestProcessor implements Processor {
             } else {
                 response = new VoteResponse(request.getTerm(), false);
             }
+
             try {
                 channel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(response)));
             } catch (ClosedChannelException e) {

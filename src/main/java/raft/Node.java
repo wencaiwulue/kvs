@@ -1,20 +1,20 @@
 package raft;
 
 import db.core.DB;
+import db.core.LogDB;
 import lombok.Data;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import raft.processor.*;
 import rpc.Client;
-import rpc.model.requestresponse.VoteRequest;
-import rpc.model.requestresponse.VoteResponse;
 import rpc.model.requestresponse.HeartbeatRequest;
 import rpc.model.requestresponse.HeartbeatResponse;
+import rpc.model.requestresponse.VoteRequest;
+import rpc.model.requestresponse.VoteResponse;
 import util.ThreadUtil;
 
 import java.net.InetSocketAddress;
 import java.nio.channels.SocketChannel;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -38,7 +38,7 @@ public class Node implements Runnable {
     Set<InetSocketAddress> peerAddress; //其它节点的IP和端口信息
 
     DB db;
-    DB logDB;
+    public LogDB logdb;
     public State state = State.FOLLOWER;// 默认是follower角色
     long timeout = 150;//150ms -- 300ms randomized  超时时间,选举的时候，如果主节点挂了，则所有的节点开始timeout，然后最先timeout结束的节点变为candidate，
     // 参见竞选，然后发送竞选类型的请求，如果半数以上统一，则广播给所有人，
@@ -57,14 +57,14 @@ public class Node implements Runnable {
     Lock readLock = this.lock.readLock();
     Lock writeLock = this.lock.writeLock();
 
-
-    List<Processor> processors = new ArrayList<>();
+    private List<Processor> processors;
 
     public Node(InetSocketAddress address, Set<InetSocketAddress> peerAddress) {
         this.address = address;
         this.peerAddress = peerAddress;
         this.db = new DB("C:\\Users\\89570\\Documents\\kvs_" + address.getPort() + ".db");
-        this.processors.addAll(Arrays.asList(new AddPeerRequestProcessor(), new HeartbeatRequestProcessor(), new RemovePeerRequestProcessor(), new VoteRequestProcessor()));
+        this.logdb = new LogDB("C:\\Users\\89570\\Documents\\kvs_" + address.getPort() + ".log");
+        this.processors = Arrays.asList(new AddPeerRequestProcessor(), new HeartbeatRequestProcessor(), new RemovePeerRequestProcessor(), new VoteRequestProcessor());
     }
 
 
@@ -107,12 +107,16 @@ public class Node implements Runnable {
             for (InetSocketAddress addr : this.peerAddress) {// todo 这里可以使用callable + future，并行加速处理
                 if (addr.equals(this.address)) continue;
                 // todo 这里写消息的时候，可以使用DirectByteBuffer实现零拷贝
-                VoteResponse response = (VoteResponse) Client.doRequest(addr, new VoteRequest(this.address, this.currTerm + 1, this.logDB.getLastLogIndex(), this.logDB.getLastLogTerm()));
-                if (response != null && response.isGrant()) {
+                VoteResponse response = (VoteResponse) Client.doRequest(addr, new VoteRequest(this.address, this.currTerm + 1, this.logdb.lastLogIndex, this.logdb.getLastLogTerm()));
+                if (response != null) {
                     log.error("收到从:{}的回包:{}", addr, response);
-                    ai.addAndGet(1);
+                    if (response.isGrant()) {
+                        ai.addAndGet(1);
+                    } else {
+                        log.error("竟然不投票。远端主机为: {}", addr);
+                    }
                 } else {
-                    log.error("竟然不投票，可能是挂掉了，不理它。远端主机为：{}", addr);
+                    log.error("可能是挂掉了。远端主机为: {}", addr);
                 }
             }
             if (ai.get() > Math.ceil(peerAddress.size() / 2D)) {// 超过半数了，成功了
@@ -133,19 +137,21 @@ public class Node implements Runnable {
         return channel != null && channel.isOpen() && channel.isConnected();
     }
 
-    boolean isLeader() {
+    public boolean isLeader() {
         return leaderAddr != null && leaderAddr.equals(this.address) && state == State.LEADER;
     }
 
-    // todo 可以拆分为服务器之间与服务器和client两种，也就是状态协商和curd
+    // 可以拆分为服务器之间与服务器和client两种，也就是状态协商和curd
     public void handle(java.lang.Object req, SocketChannel channel) {
         if (req == null) return;
+
         for (Processor processor : processors) {
             if (processor.supports(req)) {
                 processor.process(req, this, channel);
-                break;
+                return;
             }
         }
+        log.error("this is impossible");
     }
 
 

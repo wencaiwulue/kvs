@@ -12,6 +12,7 @@ public interface Processor {
 
     boolean supports(Object req);
 
+    // 这里要不要改成 Response process(Object req, Node node)??
     void process(Object req, Node node, SocketChannel channel);
 
 }

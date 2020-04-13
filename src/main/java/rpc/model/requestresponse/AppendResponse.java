@@ -1,13 +1,8 @@
 package rpc.model.requestresponse;
 
-import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import raft.LogEntry;
 import rpc.model.Request;
-
-import java.net.InetSocketAddress;
-import java.util.List;
 
 /**
  * @author naison
@@ -15,7 +10,6 @@ import java.util.List;
  */
 @Data
 @NoArgsConstructor
-@AllArgsConstructor
-public class SetResponse extends Request {
+public class AppendResponse extends Request {
     private static final long serialVersionUID = -6253521216698393268L;
 }

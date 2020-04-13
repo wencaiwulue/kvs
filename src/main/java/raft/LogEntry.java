@@ -1,10 +1,13 @@
 package raft;
 
 
+import lombok.Data;
+
 /**
  * @author naison
  * @since 3/14/2020 19:06
  */
+@Data
 public class LogEntry {
     int index;
     int term;
