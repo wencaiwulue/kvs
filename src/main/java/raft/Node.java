@@ -4,7 +4,7 @@ import db.core.DB;
 import lombok.Data;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import raft.processor.Processor;
+import raft.processor.*;
 import rpc.Client;
 import rpc.model.requestresponse.VoteRequest;
 import rpc.model.requestresponse.VoteResponse;
@@ -15,11 +15,16 @@ import util.ThreadUtil;
 import java.net.InetSocketAddress;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * @author naison
@@ -30,9 +35,10 @@ public class Node implements Runnable {
     private static final Logger log = LogManager.getLogger(Node.class);
 
     InetSocketAddress address; // 本机的IP和端口信息
-    List<InetSocketAddress> peerAddress; //其它节点的IP和端口信息
+    Set<InetSocketAddress> peerAddress; //其它节点的IP和端口信息
 
     DB db;
+    DB logDB;
     public State state = State.FOLLOWER;// 默认是follower角色
     long timeout = 150;//150ms -- 300ms randomized  超时时间,选举的时候，如果主节点挂了，则所有的节点开始timeout，然后最先timeout结束的节点变为candidate，
     // 参见竞选，然后发送竞选类型的请求，如果半数以上统一，则广播给所有人，
@@ -47,12 +53,18 @@ public class Node implements Runnable {
     public volatile InetSocketAddress lastVoteFor;// 判断当前选举是否已经投票
     public volatile InetSocketAddress leaderAddr;//leader节点信息，因为所有的数据处理都需要leader来操作。
 
+    ReadWriteLock lock = new ReentrantReadWriteLock();
+    Lock readLock = this.lock.readLock();
+    Lock writeLock = this.lock.writeLock();
+
+
     List<Processor> processors = new ArrayList<>();
 
-    public Node(InetSocketAddress address, List<InetSocketAddress> peerAddress) {
+    public Node(InetSocketAddress address, Set<InetSocketAddress> peerAddress) {
         this.address = address;
         this.peerAddress = peerAddress;
         this.db = new DB("C:\\Users\\89570\\Documents\\kvs_" + address.getPort() + ".db");
+        this.processors.addAll(Arrays.asList(new AddPeerRequestProcessor(), new HeartbeatRequestProcessor(), new RemovePeerRequestProcessor(), new VoteRequestProcessor()));
     }
 
 
@@ -85,28 +97,34 @@ public class Node implements Runnable {
         ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(heartbeats, 0, heartBeatRate, TimeUnit.MILLISECONDS);// 每150ms心跳一下
     }
 
+    @SuppressWarnings("NonAtomicOperationOnVolatileField")
     void elect() {
         log.error("开始选举");
-        AtomicInteger ai = new AtomicInteger(1);//先给自己投一票
-        state = State.CANDIDATE;// 改变状态为candidate
-        for (InetSocketAddress addr : peerAddress) {// todo 这里可以使用callable + future，并行加速处理
-            if (addr.equals(address)) continue;
-            // todo 这里写消息的时候，可以使用DirectByteBuffer实现零拷贝
-            VoteResponse response = (VoteResponse) Client.doRequest(addr, new VoteRequest(this.currTerm + 1, 1, 1));
-            if (response != null && response.isGrant()) {
-                log.error("收到从:{}的回包:{}", addr, response);
-                ai.addAndGet(1);
-            } else {
-                log.error("竟然不投票，可能是挂掉了，不理它。远端主机为：{}", addr);
+        this.writeLock.lock();
+        try {
+            AtomicInteger ai = new AtomicInteger(1);//先给自己投一票
+            this.state = State.CANDIDATE;// 改变状态为candidate
+            for (InetSocketAddress addr : this.peerAddress) {// todo 这里可以使用callable + future，并行加速处理
+                if (addr.equals(this.address)) continue;
+                // todo 这里写消息的时候，可以使用DirectByteBuffer实现零拷贝
+                VoteResponse response = (VoteResponse) Client.doRequest(addr, new VoteRequest(this.address, this.currTerm + 1, this.logDB.getLastLogIndex(), this.logDB.getLastLogTerm()));
+                if (response != null && response.isGrant()) {
+                    log.error("收到从:{}的回包:{}", addr, response);
+                    ai.addAndGet(1);
+                } else {
+                    log.error("竟然不投票，可能是挂掉了，不理它。远端主机为：{}", addr);
+                }
             }
-        }
-        if (ai.get() > Math.ceil(peerAddress.size() / 2D)) {// 超过半数了，我成功了
-            log.error("选举成功，选出leader了{}", this.address);
-            this.currTerm += this.currTerm + 1;
-            this.leaderAddr = this.address;
-            this.state = State.LEADER;
-        } else {
-            log.error("选举失败");
+            if (ai.get() > Math.ceil(peerAddress.size() / 2D)) {// 超过半数了，成功了
+                log.error("选举成功，选出leader了{}", this.address);
+                this.currTerm = this.currTerm + 1;
+                this.leaderAddr = this.address;
+                this.state = State.LEADER;
+            } else {
+                log.error("选举失败");
+            }
+        } finally {
+            this.writeLock.unlock();
         }
     }
 
@@ -122,7 +140,6 @@ public class Node implements Runnable {
     // todo 可以拆分为服务器之间与服务器和client两种，也就是状态协商和curd
     public void handle(java.lang.Object req, SocketChannel channel) {
         if (req == null) return;
-        String s = req.getClass().getName();
         for (Processor processor : processors) {
             if (processor.supports(req)) {
                 processor.process(req, this, channel);

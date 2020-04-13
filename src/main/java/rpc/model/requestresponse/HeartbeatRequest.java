@@ -11,6 +11,7 @@ import java.net.InetSocketAddress;
  */
 @Data
 public class HeartbeatRequest extends Request {
+    private static final long serialVersionUID = 6824938127696128332L;
     int term;
     InetSocketAddress leaderAddr;
 

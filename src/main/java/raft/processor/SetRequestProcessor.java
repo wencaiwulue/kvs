@@ -1,17 +1,18 @@
 package raft.processor;
 
 import raft.Node;
+import rpc.model.requestresponse.SetRequest;
 
 import java.nio.channels.SocketChannel;
 
 /**
  * @author naison
- * @since 4/12/2020 18:06
+ * @since 4/13/2020 14:42
  */
-public class TryAcceptRequestProcessor implements Processor {
+public class SetRequestProcessor implements Processor {
     @Override
     public boolean supports(Object req) {
-        return false;
+        return req instanceof SetRequest;
     }
 
     @Override

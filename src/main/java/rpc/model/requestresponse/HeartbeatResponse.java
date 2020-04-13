@@ -1,6 +1,5 @@
 package rpc.model.requestresponse;
 
-import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import rpc.model.Response;
@@ -11,6 +10,6 @@ import rpc.model.Response;
  */
 @Data
 @NoArgsConstructor
-//@AllArgsConstructor
 public class HeartbeatResponse extends Response {
+    private static final long serialVersionUID = 255597849623059585L;
 }

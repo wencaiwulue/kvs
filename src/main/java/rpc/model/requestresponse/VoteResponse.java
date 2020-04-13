@@ -13,6 +13,7 @@ import rpc.model.Response;
 @AllArgsConstructor
 @NoArgsConstructor
 public class VoteResponse extends Response {
+    private static final long serialVersionUID = 6388639175646732562L;
     int term;
     boolean grant;
 

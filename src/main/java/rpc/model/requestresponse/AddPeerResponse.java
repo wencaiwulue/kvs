@@ -11,4 +11,5 @@ import rpc.model.Response;
 @Data
 @NoArgsConstructor
 public class AddPeerResponse extends Response {
+    private static final long serialVersionUID = 1051441981605736599L;
 }

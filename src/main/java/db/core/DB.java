@@ -178,6 +178,14 @@ public class DB {
         // 如果已经在expireKey中，就会出问题。处理方法是加反向索引，但是这样值得吗
     }
 
+    public int getLastLogIndex() {
+        return 0;
+    }
+
+    public int getLastLogTerm() {
+        return 0;
+    }
+
     public static void main(String[] args) throws InterruptedException {
         DB db = new DB("");
         for (int i = 4; i > 0; i--) {

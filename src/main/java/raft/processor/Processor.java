@@ -10,8 +10,8 @@ import java.nio.channels.SocketChannel;
  */
 public interface Processor {
 
-    boolean supports(Object obj);
+    boolean supports(Object req);
 
-    void process(Object obj, Node node, SocketChannel channel);
+    void process(Object req, Node node, SocketChannel channel);
 
 }

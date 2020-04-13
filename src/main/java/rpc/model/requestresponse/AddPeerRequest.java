@@ -13,6 +13,7 @@ import java.net.InetSocketAddress;
 @Data
 @AllArgsConstructor
 public class AddPeerRequest extends Request {
+    private static final long serialVersionUID = -4132647511647067775L;
     InetSocketAddress peer;
 
     public InetSocketAddress getPeer() {

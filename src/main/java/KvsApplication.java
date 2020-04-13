@@ -3,6 +3,7 @@ import rpc.App;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 
 public class KvsApplication {
@@ -16,7 +17,7 @@ public class KvsApplication {
         }
 
         for (InetSocketAddress s : address) {
-            App app = new App(s, new ArrayList<>());// 邻居不包含自己
+            App app = new App(s, new HashSet<>());// 邻居不包含自己
             app.start();
         }
     }
