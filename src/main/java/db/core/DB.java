@@ -64,22 +64,16 @@ public class DB {
 
     @SuppressWarnings("all")
     public void initAndReadIntoMemory() {
-        if (raf == null) {
-            synchronized (this) {
-                if (raf == null) {
-                    try {
-                        File f = new File(dbPath);
-                        if (!f.exists()) f.createNewFile();
-                        raf = new RandomAccessFile(f, "rw");
-                    } catch (IOException e) {
-                        log.error(e);
-                    }
-                }
-            }
-        }
         writeLock.lock();
         try {
+            if (raf == null) {
+                File f = new File(dbPath);
+                if (!f.exists()) f.createNewFile();
+                raf = new RandomAccessFile(f, "rw");
+            }
             BackupUtil.readFromDisk(map, raf);
+        } catch (IOException e) {
+            log.error(e);
         } finally {
             writeLock.unlock();
         }
