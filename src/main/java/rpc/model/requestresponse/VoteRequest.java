@@ -2,7 +2,6 @@ package rpc.model.requestresponse;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
-import rpc.model.Request;
 
 import java.net.InetSocketAddress;
 

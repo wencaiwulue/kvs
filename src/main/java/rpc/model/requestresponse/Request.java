@@ -1,4 +1,4 @@
-package rpc.model;
+package rpc.model.requestresponse;
 
 import java.io.Serializable;
 

@@ -1,7 +1,6 @@
 package rpc.model.requestresponse;
 
 import lombok.Data;
-import rpc.model.Response;
 
 /**
  * @author naison

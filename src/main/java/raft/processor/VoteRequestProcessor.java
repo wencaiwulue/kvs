@@ -4,7 +4,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import raft.Node;
 import raft.State;
-import rpc.model.Response;
+import rpc.model.requestresponse.Response;
 import rpc.model.requestresponse.VoteRequest;
 import rpc.model.requestresponse.VoteResponse;
 import util.FSTUtil;

@@ -2,7 +2,6 @@ package rpc.model.requestresponse;
 
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import rpc.model.Request;
 
 /**
  * @author naison

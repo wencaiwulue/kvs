@@ -2,7 +2,6 @@ package rpc;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import rpc.model.Response;
 import util.FSTUtil;
 
 import java.io.IOException;

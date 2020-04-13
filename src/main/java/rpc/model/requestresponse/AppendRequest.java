@@ -4,7 +4,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import raft.LogEntry;
-import rpc.model.Request;
 
 import java.net.InetSocketAddress;
 import java.util.List;
