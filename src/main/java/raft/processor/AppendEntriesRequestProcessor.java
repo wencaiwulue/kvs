@@ -2,16 +2,11 @@ package raft.processor;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import raft.LogEntry;
 import raft.Node;
-import rpc.Client;
 import rpc.model.requestresponse.AppendEntriesRequest;
 import rpc.model.requestresponse.AppendEntriesResponse;
-import util.KryoUtil;
-
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.SocketChannel;
+import rpc.model.requestresponse.Request;
+import rpc.model.requestresponse.Response;
 
 /**
  * @author naison
@@ -21,29 +16,19 @@ public class AppendEntriesRequestProcessor implements Processor {
     private static final Logger log = LogManager.getLogger(AppendEntriesRequestProcessor.class);
 
     @Override
-    public boolean supports(Object req) {
+    public boolean supports(Request req) {
         return req instanceof AppendEntriesRequest;
     }
 
-    @SuppressWarnings("NonAtomicOperationOnVolatileField")
     @Override
-    public void process(Object req, Node node, SocketChannel channel) {
-        Object response;
-        if (!node.isLeader()) {
-            response = Client.doRequest(node.leaderAddr, req);
-        } else {
-            AppendEntriesRequest request = (AppendEntriesRequest) req;
-            for (LogEntry log : request.getData()) {
-                log.setIndex(++node.logdb.lastLogIndex);
-                log.setTerm(node.currTerm);
-            }
-            node.getLogdb().save(request.getData());
-            response = new AppendEntriesResponse();
-        }
+    public Response process(Request req, Node node) {
+        node.writeLock.lock();
         try {
-            channel.write(ByteBuffer.wrap(KryoUtil.asByteArray(response)));
-        } catch (IOException e) {
-            log.error(e);
+            AppendEntriesRequest request = (AppendEntriesRequest) req;
+            node.logdb.save(request.getEntries());
+            return new AppendEntriesResponse(node.currTerm, true, node.logdb.lastLogIndex);
+        } finally {
+            node.writeLock.unlock();
         }
     }
 }

@@ -3,10 +3,7 @@ package db.core;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import raft.LogEntry;
-import util.BackupUtil;
-import util.ByteArrayUtil;
-import util.FSTUtil;
-import util.ThreadUtil;
+import util.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -114,12 +111,11 @@ public class LogDB {
         save(logs, false);
     }
 
-    public void save(List<LogEntry> logs, boolean forceFlush) {
+    public void save(List<LogEntry> logs, boolean flush) {
         for (LogEntry entry : logs) {
             set(String.valueOf(entry.getIndex()), entry);
         }
-
-        if (forceFlush) {
+        if (flush) {
             writeDataToDisk();
         }
     }
@@ -128,7 +124,7 @@ public class LogDB {
         if (key == null) return;
         map.put(key, value);
         byte[] kb = key.getBytes();
-        byte[] vb = FSTUtil.getConf().asByteArray(value);
+        byte[] vb = KryoUtil.asByteArray(value);
         buffer.push(ByteArrayUtil.combine(kb, vb));
     }
 

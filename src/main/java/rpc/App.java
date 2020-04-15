@@ -2,6 +2,7 @@ package rpc;
 
 
 import raft.Node;
+import rpc.model.requestresponse.AddPeerRequest;
 import util.ThreadUtil;
 
 import java.io.IOException;
@@ -29,7 +30,11 @@ public class App {
     }
 
     public static void main(String[] args) throws IOException {
-        new App(new InetSocketAddress("localhost", 8000), new HashSet<>()).start();
+        App app = new App(new InetSocketAddress("localhost", 8000), new HashSet<>());
+        app.start();
+        App app1 = new App(new InetSocketAddress("localhost", 8001), new HashSet<>());
+        app1.start();
+        Client.doRequest(new InetSocketAddress("localhost", 8000), new AddPeerRequest(new InetSocketAddress("localhost", 8001)));
     }
 
 }

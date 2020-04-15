@@ -1,8 +1,8 @@
 package raft.processor;
 
 import raft.Node;
-
-import java.nio.channels.SocketChannel;
+import rpc.model.requestresponse.Request;
+import rpc.model.requestresponse.Response;
 
 /**
  * @author naison
@@ -10,12 +10,12 @@ import java.nio.channels.SocketChannel;
  */
 public class ReplicationRequestProcessor implements Processor {
     @Override
-    public boolean supports(Object req) {
+    public boolean supports(Request req) {
         return false;
     }
 
     @Override
-    public void process(Object req, Node node, SocketChannel channel) {
-
+    public Response process(Request req, Node node) {
+        return null;
     }
 }

@@ -17,6 +17,6 @@ import java.util.List;
 @AllArgsConstructor
 public class AppendEntriesRequest extends Request {
     private static final long serialVersionUID = -2322012843577274410L;
-    List<LogEntry> data;
+    List<LogEntry> entries;
     InetSocketAddress leaderAddr;
 }

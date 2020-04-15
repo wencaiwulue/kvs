@@ -2,7 +2,10 @@ package rpc;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import rpc.model.requestresponse.Request;
+import rpc.model.requestresponse.Response;
 import util.FSTUtil;
+import util.KryoUtil;
 
 import java.io.IOException;
 import java.net.ConnectException;
@@ -14,7 +17,9 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
+import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.LinkedBlockingDeque;
 
 /**
  * @author naison
@@ -24,8 +29,8 @@ public class Client {
     private static final Logger log = LogManager.getLogger(Client.class);
 
     private static final ConcurrentHashMap<InetSocketAddress, SocketChannel> connections = new ConcurrentHashMap<>();// 主节点于各个简单的链接
-    private static final ConcurrentHashMap<InetSocketAddress, DatagramChannel> connectionsUDP = new ConcurrentHashMap<>();// 主节点于各个简单的链接
     private static Selector selector;// 这个selector处理的是请求的回包
+    private static LinkedBlockingDeque deque;// todo optimize for huge request, try to use future
 
     static {
         try {
@@ -59,32 +64,7 @@ public class Client {
         return connections.get(remote);
     }
 
-    private static DatagramChannel getConnectionUDP(InetSocketAddress remote) {
-        if (remote == null) return null;
-
-        if (!connectionsUDP.containsKey(remote) || !connectionsUDP.get(remote).isOpen() || !connectionsUDP.get(remote).isConnected()) {
-            synchronized (Client.class) {
-                if (!connectionsUDP.containsKey(remote) || !connectionsUDP.get(remote).isOpen() || !connectionsUDP.get(remote).isConnected()) {
-                    try {
-                        DatagramChannel channel = DatagramChannel.open();
-                        channel.bind(remote);
-                        channel.setOption(StandardSocketOptions.TCP_NODELAY, true);
-                        channel.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
-                        channel.configureBlocking(false);
-                        channel.register(selector, SelectionKey.OP_READ);
-                        connectionsUDP.put(remote, channel);
-                    } catch (ConnectException e) {
-                        log.error("出错啦, 可能是有的主机死掉了，这个直接吞了，{}", e.getMessage());
-                    } catch (IOException e) {
-                        log.error(e);
-                    }
-                }
-            }
-        }
-        return connectionsUDP.get(remote);
-    }
-
-    public static Object doRequest(InetSocketAddress remote, Object request) {
+    public static Response doRequest(InetSocketAddress remote, final Request request) {
         if (remote == null) return null;
 
         SocketChannel channel = getConnection(remote);
@@ -94,6 +74,7 @@ public class Client {
                 int t = 0;
                 while (t++ < retry) {
                     try {
+                        // todo 尝试使用DirectByteBuffer实现零拷贝
                         int write = channel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(request)));
                         if (write <= 0) throw new IOException("魔鬼！！！");
 
@@ -108,7 +89,7 @@ public class Client {
         return null;
     }
 
-    private static Object getRes(SocketChannel channel) throws IOException {
+    private static Response getRes(SocketChannel channel) throws IOException {
         int retry = 3;
         int t = 0;
         while (t++ < retry) {
@@ -123,7 +104,7 @@ public class Client {
                             ByteBuffer buffer = ByteBuffer.allocate(1024);// todo optimize
                             int read = ((SocketChannel) key.channel()).read(buffer);
                             if (read > 0) {
-                                return FSTUtil.getConf().asObject(buffer.array());
+                                return (Response) FSTUtil.getConf().asObject(buffer.array());
                             }
                         } else if (key.isAcceptable() || key.isConnectable() || key.isWritable()) {
                             log.error("这也是魔鬼");

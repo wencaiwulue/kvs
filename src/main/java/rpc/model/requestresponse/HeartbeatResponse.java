@@ -1,5 +1,6 @@
 package rpc.model.requestresponse;
 
+import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 

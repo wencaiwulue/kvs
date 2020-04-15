@@ -1,8 +1,8 @@
 package raft.processor;
 
 import raft.Node;
-
-import java.nio.channels.SocketChannel;
+import rpc.model.requestresponse.Request;
+import rpc.model.requestresponse.Response;
 
 /**
  * @author naison
@@ -10,9 +10,8 @@ import java.nio.channels.SocketChannel;
  */
 public interface Processor {
 
-    boolean supports(Object req);
+    boolean supports(Request req);
 
-    // 这里要不要改成 Response process(Object req, Node node)??
-    void process(Object req, Node node, SocketChannel channel);
-
+    // 这里要不要改成 Response process(Request req, Node node)??
+    Response process(Request req, Node node);
 }

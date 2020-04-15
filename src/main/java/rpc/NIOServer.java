@@ -4,6 +4,7 @@ package rpc;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import raft.Node;
+import rpc.model.requestresponse.Request;
 import util.FSTUtil;
 import util.ThreadUtil;
 
@@ -137,7 +138,7 @@ public class NIOServer implements Runnable {
     // todo nio
     private boolean processRead(SelectionKey key) {
         try {
-            ThreadUtil.getThreadPool().execute(new Handler(key, selector, node));
+            ThreadUtil.getThreadPool().execute(new Handler(key, node));
         } catch (Exception e) {
             return false;
         }
@@ -147,12 +148,10 @@ public class NIOServer implements Runnable {
     static class Handler implements Runnable {
 
         private SelectionKey key;
-        private Selector selector;
         private Node node;
 
-        private Handler(SelectionKey key, Selector selector, Node node) {
+        private Handler(SelectionKey key, Node node) {
             this.key = key;
-            this.selector = selector;
             this.node = node;
         }
 
@@ -165,7 +164,7 @@ public class NIOServer implements Runnable {
                     int read = channel.read(byteBuffer);
                     if (read <= 0) return;// 也就是客户端主动断开链接，因为在客户端断开的时候，也会发送一个读事件
 
-                    Object request = FSTUtil.getConf().asObject(byteBuffer.array());
+                    Request request = (Request) FSTUtil.getConf().asObject(byteBuffer.array());
                     node.handle(request, channel);// handle the request
                 } catch (IOException e) {
                     log.error("出错了，关闭channel", e);

@@ -6,7 +6,7 @@ import org.nustaq.serialization.FSTConfiguration;
  * @author naison
  * @since 3/25/2020 17:25
  */
-public class FSTUtil {
+public class FSTUtil { // use for communication serialization
 
     private static final FSTConfiguration conf = FSTConfiguration.createDefaultConfiguration();
 

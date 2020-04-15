@@ -1,5 +1,6 @@
 package rpc.model.requestresponse;
 
+import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -9,6 +10,10 @@ import lombok.NoArgsConstructor;
  */
 @Data
 @NoArgsConstructor
-public class AppendEntriesResponse extends Request {
+@AllArgsConstructor
+public class AppendEntriesResponse extends Response {
     private static final long serialVersionUID = -6253521216698393268L;
+    int term;
+    boolean success = false;
+    int lastLogIndex;
 }

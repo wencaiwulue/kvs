@@ -5,13 +5,18 @@ import db.core.LogDB;
 import lombok.Data;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import raft.enums.State;
 import raft.processor.*;
 import rpc.Client;
 import rpc.model.requestresponse.*;
+import util.FSTUtil;
+import util.KryoUtil;
 import util.ThreadUtil;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.nio.channels.DatagramChannel;
+import java.nio.ByteBuffer;
+import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SocketChannel;
 import java.util.Arrays;
 import java.util.List;
@@ -32,8 +37,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class Node implements Runnable {
     private static final Logger log = LogManager.getLogger(Node.class);
 
-    InetSocketAddress address; // 本机的IP和端口信息
-    Set<InetSocketAddress> peerAddress; //其它节点的IP和端口信息
+    public InetSocketAddress address; // 本机的IP和端口信息
+    public Set<InetSocketAddress> peerAddress; //其它节点的IP和端口信息, 不包含当前节点
 
     DB db;
     public LogDB logdb;
@@ -51,11 +56,12 @@ public class Node implements Runnable {
     public volatile InetSocketAddress lastVoteFor;// 判断当前选举是否已经投票
     public volatile InetSocketAddress leaderAddr;//leader节点信息，因为所有的数据处理都需要leader来操作。
 
-    ReadWriteLock lock = new ReentrantReadWriteLock();
-    Lock readLock = this.lock.readLock();
-    Lock writeLock = this.lock.writeLock();
+    public ReadWriteLock lock = new ReentrantReadWriteLock();
+    public Lock readLock = this.lock.readLock();
+    public Lock writeLock = this.lock.writeLock();
 
     private List<Processor> processors;
+    private List<Processor> KVProcessors;
 
     public Node(InetSocketAddress address, Set<InetSocketAddress> peerAddress) {
         this.address = address;
@@ -63,50 +69,51 @@ public class Node implements Runnable {
         this.db = new DB("C:\\Users\\89570\\Documents\\kvs_" + address.getPort() + ".db");
         this.logdb = new LogDB("C:\\Users\\89570\\Documents\\kvs_" + address.getPort() + ".log");
         this.processors = Arrays.asList(new AddPeerRequestProcessor(), new HeartbeatRequestProcessor(), new RemovePeerRequestProcessor(), new VoteRequestProcessor());
+        this.KVProcessors = Arrays.asList(new AppendEntriesRequestProcessor(), new ReplicationRequestProcessor(), new CURDProcessor());
     }
-
 
     @Override
     public void run() {
         Runnable elect = () -> {
             int i = ThreadLocalRandom.current().nextInt(150);// 0-150ms, 随机一段时间，避免同时选举
-            if (leaderAddr == null || System.nanoTime() > lastHeartBeat + heartBeatRate + i) {// 很久没有来自leader的心跳，说明leader卒了，选举开始
+            if (leaderAddr == null || (System.nanoTime() > lastHeartBeat + heartBeatRate + i && !this.isLeader())) {// 很久没有来自leader的心跳，说明leader卒了，选举开始
                 elect();
             }
         };
         ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(elect, 0, 150, TimeUnit.MILLISECONDS);// 定期检查leader是不是死掉了
 
-        Runnable heartbeats = () -> {
+        Runnable heartbeat = () -> {
             if (isLeader()) {// 如果自己是主领导，就需要给各个节点发送心跳包
                 for (InetSocketAddress address : peerAddress) {
                     if (address.equals(this.address)) continue;// 自己不发
 
                     HeartbeatResponse response = (HeartbeatResponse) Client.doRequest(address, new HeartbeatRequest(this.currTerm, this.address));
-                    log.error("收到从follower的心跳回包.{}", response);
-                    if (response != null) {// 说明之前的机器死掉了，现在活过来了
-                        // todo 传输数据
-//                        Response res = Client.doRequest(address, new AddPeerRequest());
-                    }
-                    log.error("已经通知了全球人");
+                    log.error("收到从follower:{}的心跳回包:{}", address, response);
                     break;
                 }
             }
         };
-        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(heartbeats, 0, heartBeatRate, TimeUnit.MILLISECONDS);// 每150ms心跳一下
+        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(heartbeat, 0, heartBeatRate, TimeUnit.MILLISECONDS);// 每150ms心跳一下
     }
 
     @SuppressWarnings("NonAtomicOperationOnVolatileField")
     void elect() {
-        if (this.peerAddress.size() <= 1) return;// 没人
+        if (this.peerAddress.isEmpty()) { // only one node, became the leader
+            log.error("i'm a standalone leader");
+            this.currTerm = this.currTerm + 1;
+            this.leaderAddr = this.address;
+            this.state = State.LEADER;
+            return;
+        }
 
-        log.error("开始选举");
+        log.error("start elect...");
         this.writeLock.lock();
         try {
             AtomicInteger ai = new AtomicInteger(1);//先给自己投一票
             this.state = State.CANDIDATE;// 改变状态为candidate
             for (InetSocketAddress addr : this.peerAddress) {// todo 这里可以使用callable + future，并行加速处理
                 if (addr.equals(this.address)) continue;
-                // todo 这里写消息的时候，可以使用DirectByteBuffer实现零拷贝
+
                 VoteResponse response = (VoteResponse) Client.doRequest(addr, new VoteRequest(this.address, this.currTerm + 1, this.logdb.lastLogIndex, this.logdb.lastLogTerm));
                 if (response != null) {
                     log.error("收到从:{}的回包:{}", addr, response);
@@ -125,7 +132,7 @@ public class Node implements Runnable {
                 this.leaderAddr = this.address;
                 this.state = State.LEADER;
             } else {
-                log.error("选举失败");
+                log.error("elect failed");
             }
         } finally {
             this.writeLock.unlock();
@@ -142,19 +149,34 @@ public class Node implements Runnable {
     }
 
     // 可以拆分为服务器之间与服务器和client两种，也就是状态协商和curd
-    public void handle(java.lang.Object req, SocketChannel channel) {
+    public void handle(Request req, SocketChannel channel) {
         if (req == null) return;
 
-        for (Processor processor : processors) {
+        Response r = null;
+        for (Processor processor : this.processors) {
             if (processor.supports(req)) {
-                processor.process(req, this, channel);
-                return;
+                r = processor.process(req, this);
+                break;
             }
         }
-        log.error("this is impossible");
+
+        for (Processor processor : this.KVProcessors) {
+            if (processor.supports(req)) {
+                r = processor.process(req, this);
+                break;
+            }
+        }
+
+        try {
+            channel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(r)));
+        } catch (ClosedChannelException e) {
+            log.error("这里的channel失效了, 需要重试吗?");
+        } catch (IOException e) {
+            log.error("回复失败。", e);
+        }
     }
 
-    /**
+    /*
      *
      *  Leader Election.主节点选举
      * if(follower没有听见来自leader的心跳){
@@ -184,7 +206,7 @@ public class Node implements Runnable {
      * }
      */
 
-    /**
+    /*
      * 更改数据
      * 1，从client接受请求，判断当前节点，是不是主节点
      * if(如果不是主节点 && 主节点存在){
@@ -212,7 +234,7 @@ public class Node implements Runnable {
      *
      */
 
-    /**
+    /*
      * 子问题，如何确定是不是有有效的leader存在
      *
      */

@@ -17,16 +17,15 @@ public class ExpireKey implements Comparable {
     }
 
     public String getKey() {
-        return key;
+        return this.key;
     }
 
     public long getExpire() {
-        return expire;
+        return this.expire;
     }
 
-    @SuppressWarnings("all")
     @Override
     public int compareTo(Object o) {
-        return Long.compare(expire, ((ExpireKey) o).expire);
+        return Long.compare(this.expire, ((ExpireKey) o).expire);
     }
 }

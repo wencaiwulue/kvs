@@ -4,10 +4,7 @@ import com.google.common.hash.BloomFilter;
 import com.google.common.hash.Funnels;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import util.BackupUtil;
-import util.ByteArrayUtil;
-import util.FSTUtil;
-import util.ThreadUtil;
+import util.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -15,6 +12,7 @@ import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -43,7 +41,7 @@ public class DB {
     private final long snapshotRate = 60 * appendRate; // 每一分钟snapshot一下
 
     private ConcurrentHashMap<String, Object> map;// RockDB or LevelDB?
-    private MinPQ<ExpireKey> expireKeys;
+    private PriorityBlockingQueue<ExpireKey> expireKeys; // java.util.PriorityQueue ??
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Lock readLock = this.lock.readLock();
     private final Lock writeLock = this.lock.writeLock();
@@ -55,7 +53,7 @@ public class DB {
 
     public DB(String dbPath) {
         this.map = new ConcurrentHashMap<>(/*1 << 30*/); // 这是hashMap的容量
-        this.expireKeys = new MinPQ<>();
+        this.expireKeys = new PriorityBlockingQueue<>(11, ExpireKey::compareTo);
         this.dbPath = dbPath;
         initAndReadIntoMemory();
         checkExpireKey();
@@ -86,7 +84,7 @@ public class DB {
                 if (size > thresholdStart || lastAppendBackupTime + appendRate < System.nanoTime()) {
                     writeLock.lock();
                     try {
-//                        BackupUtil.appendToDisk(buffer, size - thresholdStop, raf);
+                        BackupUtil.appendToDisk(buffer, size - thresholdStop, raf);
                     } finally {
                         writeLock.unlock();
                     }
@@ -113,12 +111,12 @@ public class DB {
     private void checkExpireKey() {
         Runnable check = () -> {
             while (!expireKeys.isEmpty()) {
-                ExpireKey expireKey = expireKeys.peekMin();
+                ExpireKey expireKey = expireKeys.peek();
                 if (System.nanoTime() >= expireKey.getExpire()) {
                     writeLock.lock();
                     try {
                         map.remove(expireKey.getKey());
-                        expireKeys.delMin();
+                        expireKeys.poll();
                     } finally {
                         writeLock.unlock();
                     }
@@ -148,10 +146,10 @@ public class DB {
         if (key == null) return;
         map.put(key, value);
         if (timeout > 0) {
-            expireKeys.insert(new ExpireKey(key, System.nanoTime() + unit.toNanos(timeout)));
+            expireKeys.add(new ExpireKey(key, System.nanoTime() + unit.toNanos(timeout)));
         }
         byte[] kb = key.getBytes();
-        byte[] vb = FSTUtil.getConf().asByteArray(value);
+        byte[] vb = KryoUtil.asByteArray(value);
         buffer.push(ByteArrayUtil.combine(kb, vb));
     }
 

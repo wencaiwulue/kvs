@@ -27,9 +27,9 @@ public class BackupUtil {
 
     /*
      * 写入磁盘格式为
-     * ---------------------------------------------------------------------
-     *| 8byte | key length| key |value length | value | key length | ......
-     * ---------------------------------------------------------------------
+     * -------------------------------------------------------------------------
+     *| 8 byte | keyLength | key | valueLength | value | keyLength | key |......
+     * -------------------------------------------------------------------------
      * 固定的8个byte的头，用于存储实际使用大小
      * */
     public static synchronized void snapshotToDisk(ConcurrentHashMap<String, Object> map, RandomAccessFile raf) {
@@ -68,7 +68,7 @@ public class BackupUtil {
 
 
     public static synchronized void appendToDisk(ArrayDeque<byte[]> pipeline, int size, RandomAccessFile raf) {
-        if (raf == null) return;
+        if (raf == null || pipeline.isEmpty()) return;
 
         try {
             long p = 8L;// 固定的8byte文件头
@@ -126,7 +126,7 @@ public class BackupUtil {
             long d = 0;
 
             byte[] bytes = new byte[1024];
-            for (int i = 0; i < t; i++) {// todo 裁剪的部位刚好是一个byte[]的中间，而不是一个与另一个byte[]之间的空隙
+            for (int i = 0; i < t; i++) {// 裁剪的部位刚好是一个byte[]的中间，而不是一个与另一个byte[]之间的空隙
                 long position = 8 + m * i - d;
                 long size = (m * (i + 1) > p - 8) ? p - 8 : m * (i + 1);
                 MappedByteBuffer mapped = channel.map(FileChannel.MapMode.READ_WRITE, position, size);// 跳过头位置
