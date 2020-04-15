@@ -5,8 +5,8 @@ import org.apache.logging.log4j.Logger;
 import raft.LogEntry;
 import raft.Node;
 import rpc.Client;
-import rpc.model.requestresponse.AppendRequest;
-import rpc.model.requestresponse.AppendResponse;
+import rpc.model.requestresponse.AppendEntriesRequest;
+import rpc.model.requestresponse.AppendEntriesResponse;
 import util.KryoUtil;
 
 import java.io.IOException;
@@ -17,12 +17,12 @@ import java.nio.channels.SocketChannel;
  * @author naison
  * @since 4/13/2020 14:42
  */
-public class AppendRequestProcessor implements Processor {
-    private static final Logger log = LogManager.getLogger(AppendRequestProcessor.class);
+public class AppendEntriesRequestProcessor implements Processor {
+    private static final Logger log = LogManager.getLogger(AppendEntriesRequestProcessor.class);
 
     @Override
     public boolean supports(Object req) {
-        return req instanceof AppendRequest;
+        return req instanceof AppendEntriesRequest;
     }
 
     @SuppressWarnings("NonAtomicOperationOnVolatileField")
@@ -32,13 +32,13 @@ public class AppendRequestProcessor implements Processor {
         if (!node.isLeader()) {
             response = Client.doRequest(node.leaderAddr, req);
         } else {
-            AppendRequest request = (AppendRequest) req;
+            AppendEntriesRequest request = (AppendEntriesRequest) req;
             for (LogEntry log : request.getData()) {
                 log.setIndex(++node.logdb.lastLogIndex);
                 log.setTerm(node.currTerm);
             }
             node.getLogdb().save(request.getData());
-            response = new AppendResponse();
+            response = new AppendEntriesResponse();
         }
         try {
             channel.write(ByteBuffer.wrap(KryoUtil.asByteArray(response)));

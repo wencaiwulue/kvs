@@ -20,15 +20,15 @@ import java.util.Iterator;
  * @author naison
  * @since 3/25/2020 19:32
  */
-public class NioServer implements Runnable {
-    private static final Logger log = LogManager.getLogger(NioServer.class);
+public class NIOServer implements Runnable {
+    private static final Logger log = LogManager.getLogger(NIOServer.class);
 
     private Selector selector;
     private Node node;
 
     private volatile boolean close = false;
 
-    public NioServer(InetSocketAddress addr, Node node) throws IOException {
+    public NIOServer(InetSocketAddress addr, Node node) throws IOException {
         this.selector = Selector.open();
         this.bind(addr);
         this.node = node;

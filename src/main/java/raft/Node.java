@@ -7,13 +7,11 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import raft.processor.*;
 import rpc.Client;
-import rpc.model.requestresponse.HeartbeatRequest;
-import rpc.model.requestresponse.HeartbeatResponse;
-import rpc.model.requestresponse.VoteRequest;
-import rpc.model.requestresponse.VoteResponse;
+import rpc.model.requestresponse.*;
 import util.ThreadUtil;
 
 import java.net.InetSocketAddress;
+import java.nio.channels.DatagramChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Arrays;
 import java.util.List;
@@ -99,6 +97,8 @@ public class Node implements Runnable {
 
     @SuppressWarnings("NonAtomicOperationOnVolatileField")
     void elect() {
+        if (this.peerAddress.size() <= 1) return;// 没人
+
         log.error("开始选举");
         this.writeLock.lock();
         try {
@@ -107,7 +107,7 @@ public class Node implements Runnable {
             for (InetSocketAddress addr : this.peerAddress) {// todo 这里可以使用callable + future，并行加速处理
                 if (addr.equals(this.address)) continue;
                 // todo 这里写消息的时候，可以使用DirectByteBuffer实现零拷贝
-                VoteResponse response = (VoteResponse) Client.doRequest(addr, new VoteRequest(this.address, this.currTerm + 1, this.logdb.lastLogIndex, this.logdb.getLastLogTerm()));
+                VoteResponse response = (VoteResponse) Client.doRequest(addr, new VoteRequest(this.address, this.currTerm + 1, this.logdb.lastLogIndex, this.logdb.lastLogTerm));
                 if (response != null) {
                     log.error("收到从:{}的回包:{}", addr, response);
                     if (response.isGrant()) {
@@ -153,7 +153,6 @@ public class Node implements Runnable {
         }
         log.error("this is impossible");
     }
-
 
     /**
      *

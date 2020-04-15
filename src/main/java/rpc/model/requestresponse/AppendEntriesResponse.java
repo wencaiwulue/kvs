@@ -9,6 +9,6 @@ import lombok.NoArgsConstructor;
  */
 @Data
 @NoArgsConstructor
-public class AppendResponse extends Request {
+public class AppendEntriesResponse extends Request {
     private static final long serialVersionUID = -6253521216698393268L;
 }

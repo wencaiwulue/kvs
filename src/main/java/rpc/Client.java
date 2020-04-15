@@ -9,6 +9,7 @@ import java.net.ConnectException;
 import java.net.InetSocketAddress;
 import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
+import java.nio.channels.DatagramChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
@@ -23,6 +24,7 @@ public class Client {
     private static final Logger log = LogManager.getLogger(Client.class);
 
     private static final ConcurrentHashMap<InetSocketAddress, SocketChannel> connections = new ConcurrentHashMap<>();// 主节点于各个简单的链接
+    private static final ConcurrentHashMap<InetSocketAddress, DatagramChannel> connectionsUDP = new ConcurrentHashMap<>();// 主节点于各个简单的链接
     private static Selector selector;// 这个selector处理的是请求的回包
 
     static {
@@ -55,6 +57,31 @@ public class Client {
             }
         }
         return connections.get(remote);
+    }
+
+    private static DatagramChannel getConnectionUDP(InetSocketAddress remote) {
+        if (remote == null) return null;
+
+        if (!connectionsUDP.containsKey(remote) || !connectionsUDP.get(remote).isOpen() || !connectionsUDP.get(remote).isConnected()) {
+            synchronized (Client.class) {
+                if (!connectionsUDP.containsKey(remote) || !connectionsUDP.get(remote).isOpen() || !connectionsUDP.get(remote).isConnected()) {
+                    try {
+                        DatagramChannel channel = DatagramChannel.open();
+                        channel.bind(remote);
+                        channel.setOption(StandardSocketOptions.TCP_NODELAY, true);
+                        channel.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
+                        channel.configureBlocking(false);
+                        channel.register(selector, SelectionKey.OP_READ);
+                        connectionsUDP.put(remote, channel);
+                    } catch (ConnectException e) {
+                        log.error("出错啦, 可能是有的主机死掉了，这个直接吞了，{}", e.getMessage());
+                    } catch (IOException e) {
+                        log.error(e);
+                    }
+                }
+            }
+        }
+        return connectionsUDP.get(remote);
     }
 
     public static Object doRequest(InetSocketAddress remote, Object request) {

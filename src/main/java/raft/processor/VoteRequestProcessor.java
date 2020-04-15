@@ -32,12 +32,12 @@ public class VoteRequestProcessor implements Processor {
         node.getWriteLock().lock();
         try {
             VoteRequest request = (VoteRequest) req;
-            log.error("收到vote请求.from:{} to {}, vote info:{}", request.getPeer(), node.getAddress(), request);
+            log.error("收到vote请求.from:{} to {}, vote info:{}", request.getCandidateId(), node.getAddress(), request);
             Response response;
-            int i = Long.compare(request.getLastLogTerm(), node.getLogdb().getLastLogTerm());
+            int i = Long.compare(request.getLastLogTerm(), node.getLogdb().lastLogTerm);
             if (i == 0) i = Long.compare(request.getLastLogIndex(), node.getLogdb().lastLogIndex);
             if (i >= 0 && node.lastVoteFor == null) {// 还没投过票
-                node.lastVoteFor = request.getPeer();
+                node.lastVoteFor = request.getCandidateId();
                 node.currTerm = request.getTerm();
                 node.leaderAddr = null;
                 node.state = State.FOLLOWER;

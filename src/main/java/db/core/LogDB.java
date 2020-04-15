@@ -43,6 +43,7 @@ public class LogDB {
 
     private ConcurrentHashMap<String, Object> map;// RockDB or LevelDB?
     public volatile int lastLogIndex;
+    public volatile int lastLogTerm;
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Lock readLock = this.lock.readLock();
@@ -134,18 +135,4 @@ public class LogDB {
     public void remove(String key) {
         map.remove(key);
     }
-
-    public int getLastLogTerm() {
-        return 0;
-    }
-
-    public static void main(String[] args) throws InterruptedException {
-        LogDB db = new LogDB("");
-        for (int i = 4; i > 0; i--) {
-            db.set(String.valueOf(i), i);
-        }
-        Thread.sleep(1000);
-        System.out.println(db);
-    }
-
 }

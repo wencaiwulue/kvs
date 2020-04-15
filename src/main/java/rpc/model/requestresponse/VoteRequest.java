@@ -13,7 +13,7 @@ import java.net.InetSocketAddress;
 @AllArgsConstructor
 public class VoteRequest extends Request {
     private static final long serialVersionUID = -6056301287980072876L;
-    private InetSocketAddress peer;
+    private InetSocketAddress candidateId;
     private int term;
     private int lastLogIndex;
     private int lastLogTerm;

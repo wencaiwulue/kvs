@@ -15,12 +15,12 @@ import java.util.Set;
  */
 public class App {
 
-    private NioServer nioServer;
+    private NIOServer nioServer;
     private Node node;
 
     public App(InetSocketAddress address, Set<InetSocketAddress> peerAddress) throws IOException {
         this.node = new Node(address, peerAddress);
-        this.nioServer = new NioServer(address, this.node);
+        this.nioServer = new NIOServer(address, this.node);
     }
 
     public void start() {
