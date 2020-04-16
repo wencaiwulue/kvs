@@ -5,7 +5,6 @@ import raft.Node;
 import rpc.model.requestresponse.AddPeerRequest;
 import util.ThreadUtil;
 
-import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.HashSet;
 import java.util.Set;
@@ -19,7 +18,11 @@ public class App {
     private NIOServer nioServer;
     private Node node;
 
-    public App(InetSocketAddress address, Set<InetSocketAddress> peerAddress) throws IOException {
+    public App(InetSocketAddress address) {
+        this(address, new HashSet<>());
+    }
+
+    public App(InetSocketAddress address, Set<InetSocketAddress> peerAddress) {
         this.node = new Node(address, peerAddress);
         this.nioServer = new NIOServer(address, this.node);
     }
@@ -29,12 +32,12 @@ public class App {
         ThreadUtil.getThreadPool().execute(node);
     }
 
-    public static void main(String[] args) throws IOException {
-        App app = new App(new InetSocketAddress("localhost", 8000), new HashSet<>());
-        app.start();
-        App app1 = new App(new InetSocketAddress("localhost", 8001), new HashSet<>());
-        app1.start();
-        Client.doRequest(new InetSocketAddress("localhost", 8000), new AddPeerRequest(new InetSocketAddress("localhost", 8001)));
+    public static void main(String[] args) {
+        InetSocketAddress p8000 = new InetSocketAddress("localhost", 8000);
+        InetSocketAddress p8001 = new InetSocketAddress("localhost", 8001);
+        new App(p8000).start();
+        new App(p8001).start();
+        Client.doRequest(p8000, new AddPeerRequest(p8001));
     }
 
 }

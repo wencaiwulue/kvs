@@ -29,10 +29,16 @@ public class NIOServer implements Runnable {
 
     private volatile boolean close = false;
 
-    public NIOServer(InetSocketAddress addr, Node node) throws IOException {
-        this.selector = Selector.open();
-        this.bind(addr);
-        this.node = node;
+    public NIOServer(InetSocketAddress addr, Node node) {
+        try {
+            this.selector = Selector.open();
+            this.bind(addr);
+            this.node = node;
+        } catch (IOException e) {
+            log.error("during start occurs error, shutting down...");
+            this.destroy();
+            Runtime.getRuntime().exit(-1);
+        }
     }
 
     private void bind(InetSocketAddress addr) throws IOException {
@@ -175,7 +181,7 @@ public class NIOServer implements Runnable {
                     }
                 }
             } else {
-                log.error("这是不可以的");
+                log.error("channel disconnect, should retry or not ?");
             }
         }
     }

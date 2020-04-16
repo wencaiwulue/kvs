@@ -10,7 +10,6 @@ import raft.processor.*;
 import rpc.Client;
 import rpc.model.requestresponse.*;
 import util.FSTUtil;
-import util.KryoUtil;
 import util.ThreadUtil;
 
 import java.io.IOException;
@@ -37,10 +36,12 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class Node implements Runnable {
     private static final Logger log = LogManager.getLogger(Node.class);
 
+    public volatile boolean start;
+
     public InetSocketAddress address; // 本机的IP和端口信息
     public Set<InetSocketAddress> peerAddress; //其它节点的IP和端口信息, 不包含当前节点
 
-    DB db;
+    public DB db;
     public LogDB logdb;
     public State state = State.FOLLOWER;// 默认是follower角色
     long timeout = 150;//150ms -- 300ms randomized  超时时间,选举的时候，如果主节点挂了，则所有的节点开始timeout，然后最先timeout结束的节点变为candidate，
@@ -63,18 +64,21 @@ public class Node implements Runnable {
     private List<Processor> processors;
     private List<Processor> KVProcessors;
 
+
     public Node(InetSocketAddress address, Set<InetSocketAddress> peerAddress) {
         this.address = address;
         this.peerAddress = peerAddress;
         this.db = new DB("C:\\Users\\89570\\Documents\\kvs_" + address.getPort() + ".db");
         this.logdb = new LogDB("C:\\Users\\89570\\Documents\\kvs_" + address.getPort() + ".log");
-        this.processors = Arrays.asList(new AddPeerRequestProcessor(), new HeartbeatRequestProcessor(), new RemovePeerRequestProcessor(), new VoteRequestProcessor());
+        this.processors = Arrays.asList(new AddPeerRequestProcessor(), new HeartbeatRequestProcessor(), new RemovePeerRequestProcessor(), new VoteRequestProcessor(), new PowerRequestProcessor());
         this.KVProcessors = Arrays.asList(new AppendEntriesRequestProcessor(), new ReplicationRequestProcessor(), new CURDProcessor());
     }
 
     @Override
     public void run() {
         Runnable elect = () -> {
+            if (!start) return;
+
             int i = ThreadLocalRandom.current().nextInt(150);// 0-150ms, 随机一段时间，避免同时选举
             if (leaderAddr == null || (System.nanoTime() > lastHeartBeat + heartBeatRate + i && !this.isLeader())) {// 很久没有来自leader的心跳，说明leader卒了，选举开始
                 elect();
@@ -83,6 +87,8 @@ public class Node implements Runnable {
         ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(elect, 0, 150, TimeUnit.MILLISECONDS);// 定期检查leader是不是死掉了
 
         Runnable heartbeat = () -> {
+            if (!start) return;
+
             if (isLeader()) {// 如果自己是主领导，就需要给各个节点发送心跳包
                 for (InetSocketAddress address : peerAddress) {
                     if (address.equals(this.address)) continue;// 自己不发
@@ -151,6 +157,7 @@ public class Node implements Runnable {
     // 可以拆分为服务器之间与服务器和client两种，也就是状态协商和curd
     public void handle(Request req, SocketChannel channel) {
         if (req == null) return;
+        if (!this.start) return;
 
         Response r = null;
         for (Processor processor : this.processors) {

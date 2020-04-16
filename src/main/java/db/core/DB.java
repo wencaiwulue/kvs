@@ -40,7 +40,7 @@ public class DB {
     private volatile long lastSnapshotBackupTime;
     private final long snapshotRate = 60 * appendRate; // 每一分钟snapshot一下
 
-    private ConcurrentHashMap<String, Object> map;// RockDB or LevelDB?
+    private ConcurrentHashMap<String, Object> map;// RockDB or LevelDB? B-tree?
     private PriorityBlockingQueue<ExpireKey> expireKeys; // java.util.PriorityQueue ??
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Lock readLock = this.lock.readLock();
@@ -77,7 +77,7 @@ public class DB {
         }
     }
 
-    private void writeDataToDisk() {
+    public void writeDataToDisk() {
         Runnable backup = () -> {
             int size = buffer.size();
             if (mode == 0 || mode == 2) {
@@ -108,7 +108,7 @@ public class DB {
     }
 
     // check key expire every seconds
-    private void checkExpireKey() {
+    public void checkExpireKey() {
         Runnable check = () -> {
             while (!expireKeys.isEmpty()) {
                 ExpireKey expireKey = expireKeys.peek();

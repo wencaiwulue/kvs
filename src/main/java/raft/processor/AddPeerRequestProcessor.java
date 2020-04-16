@@ -3,6 +3,7 @@ package raft.processor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import raft.Node;
+import rpc.Client;
 import rpc.model.requestresponse.*;
 
 /**
@@ -21,13 +22,12 @@ public class AddPeerRequestProcessor implements Processor {
     @Override
     public Response process(Request req, Node node) {
         AddPeerRequest request = (AddPeerRequest) req;
-        boolean add = node.getPeerAddress().add(request.getPeer());
-        Response response;
-        if (add) {
-            response = new AddPeerResponse();
+        node.getPeerAddress().add(request.getPeer());
+        PowerResponse response = (PowerResponse) Client.doRequest(request.getPeer(), new PowerRequest(false, false));
+        if (response != null && response.isSuccess()) {
+            return new AddPeerResponse();
         } else {
-            response = new ErrorResponse(400, "add peer failed, because already exists node: " + request.getPeer());
+            return new ErrorResponse(400, "add peer failed, peer info: " + request.getPeer());
         }
-        return response;
     }
 }

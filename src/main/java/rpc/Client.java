@@ -5,19 +5,16 @@ import org.apache.logging.log4j.Logger;
 import rpc.model.requestresponse.Request;
 import rpc.model.requestresponse.Response;
 import util.FSTUtil;
-import util.KryoUtil;
 
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.InetSocketAddress;
 import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
-import java.nio.channels.DatagramChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
-import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 
@@ -30,13 +27,15 @@ public class Client {
 
     private static final ConcurrentHashMap<InetSocketAddress, SocketChannel> connections = new ConcurrentHashMap<>();// 主节点于各个简单的链接
     private static Selector selector;// 这个selector处理的是请求的回包
-    private static LinkedBlockingDeque deque;// todo optimize for huge request, try to use future
+    // todo optimize for huge request, try to use future
+    private static LinkedBlockingDeque deque = new LinkedBlockingDeque(50); // each time only allow 50 request wait to process
 
     static {
         try {
             selector = Selector.open();
         } catch (IOException e) {
-            log.error("at the beginning error occurred, damn it.", e);
+            log.error("at the beginning error occurred, shutting down...", e);
+            Runtime.getRuntime().exit(-1);
         }
     }
 
@@ -69,7 +68,7 @@ public class Client {
 
         SocketChannel channel = getConnection(remote);
         if (channel != null) {
-            synchronized (remote.toString()) {// 相同的地址会被锁住
+            synchronized (remote.toString().intern()) {// 相同的地址会被锁住
                 int retry = 1;
                 int t = 0;
                 while (t++ < retry) {

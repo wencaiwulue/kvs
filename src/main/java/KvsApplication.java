@@ -8,7 +8,7 @@ import java.util.List;
 
 public class KvsApplication {
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) {
         int base = 8000;
         int n = 2;
         List<InetSocketAddress> address = new ArrayList<>(n);
@@ -17,8 +17,10 @@ public class KvsApplication {
         }
 
         for (InetSocketAddress s : address) {
-            App app = new App(s, new HashSet<>());// 邻居不包含自己
+            App app = new App(s);// 邻居不包含自己
             app.start();
         }
+
+
     }
 }
