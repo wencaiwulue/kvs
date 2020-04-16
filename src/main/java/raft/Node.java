@@ -100,6 +100,7 @@ public class Node implements Runnable {
             }
         };
         ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(heartbeat, 0, heartBeatRate, TimeUnit.MILLISECONDS);// 每150ms心跳一下
+        start = true;
     }
 
     @SuppressWarnings("NonAtomicOperationOnVolatileField")

@@ -4,7 +4,7 @@ package db.core;
  * @author naison
  * @since 4/1/2020 11:07
  */
-public class ExpireKey implements Comparable {
+public class ExpireKey implements Comparable<ExpireKey> {
     private String key;
     private long expire;// System.nanoTime();
 
@@ -25,7 +25,7 @@ public class ExpireKey implements Comparable {
     }
 
     @Override
-    public int compareTo(Object o) {
-        return Long.compare(this.expire, ((ExpireKey) o).expire);
+    public int compareTo(ExpireKey o) {
+        return Long.compare(this.expire, o.expire);
     }
 }

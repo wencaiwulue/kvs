@@ -35,9 +35,12 @@ public class App {
     public static void main(String[] args) {
         InetSocketAddress p8000 = new InetSocketAddress("localhost", 8000);
         InetSocketAddress p8001 = new InetSocketAddress("localhost", 8001);
+        InetSocketAddress p8002 = new InetSocketAddress("localhost", 8002);
         new App(p8000).start();
         new App(p8001).start();
+        new App(p8002).start();
         Client.doRequest(p8000, new AddPeerRequest(p8001));
+        Client.doRequest(p8000, new AddPeerRequest(p8002));
     }
 
 }
