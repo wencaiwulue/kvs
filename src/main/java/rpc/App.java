@@ -7,6 +7,7 @@ import rpc.model.requestresponse.Response;
 import util.ThreadUtil;
 
 import java.net.InetSocketAddress;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -37,15 +38,14 @@ public class App {
         InetSocketAddress p8000 = new InetSocketAddress("localhost", 8000);
         InetSocketAddress p8001 = new InetSocketAddress("localhost", 8001);
         InetSocketAddress p8002 = new InetSocketAddress("localhost", 8002);
-        new App(p8000).start();
-        new App(p8001).start();
-        new App(p8002).start();
-
-        ThreadUtil.sleep(2000);
-//        Response response = Client.doRequest(p8000, new AddPeerRequest(p8001));
-//        System.out.println(response);
-        Response response = Client.doRequest(p8000, new AddPeerRequest(p8002));
-        System.out.println(response);
+        int port = Integer.parseInt(args[0]);
+        InetSocketAddress follower = new InetSocketAddress("localhost", port);
+        new App(follower).start();
+        ThreadUtil.sleep(5000);
+        if (port != 8000) {
+            Response response = Client.doRequest(p8000, new AddPeerRequest(follower));
+            System.out.println(response);
+        }
     }
 
 }

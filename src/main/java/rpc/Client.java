@@ -16,10 +16,10 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
-import java.util.Iterator;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.Consumer;
 
 /**
  * @author naison
@@ -33,12 +33,13 @@ public class Client {
 
     private static ConcurrentHashMap<Integer, Response> responseMap = new ConcurrentHashMap<>();
     private static LinkedBlockingDeque<RowRequest> requestTask = new LinkedBlockingDeque<>();
+    private static Thread sendRequest = new Thread(Client::writeRequest);
 
     static {
         try {
             selector = Selector.open();
-            ThreadUtil.getThreadPool().execute(Client::run);
             ThreadUtil.getThreadPool().execute(Client::readResponse);
+            sendRequest.start();
         } catch (IOException e) {
             log.error("at the beginning error occurred, shutting down...", e);
             Runtime.getRuntime().exit(-1);
@@ -74,22 +75,21 @@ public class Client {
         if (remote == null) return null;
 
         requestTask.put(new RowRequest(remote, request));
-//        LockSupport.unpark(t);
-//        LockSupport.unpark(t1);
+        LockSupport.unpark(sendRequest);
 
         int m = 0;
-        int t = 3;
+        int t = 500;
         while (m++ < t) {
             if (!responseMap.containsKey(request.requestId)) {
-                ThreadUtil.sleep(300);
+                ThreadUtil.sleep(1);
             } else {
                 break;
             }
         }
-        return responseMap.get(request.requestId);
+        return responseMap.remove(request.requestId);
     }
 
-    private static void run() {
+    private static void writeRequest() {
         while (true) {
             while (!requestTask.isEmpty()) {
                 RowRequest poll = requestTask.poll();
@@ -110,41 +110,37 @@ public class Client {
                     }
                 }
             }
-//            long start = System.nanoTime();
-//            LockSupport.parkUntil(500);
-//            log.error("sleep: {}", System.nanoTime() - start);
+            LockSupport.park();
         }
     }
 
 
-    public static void readResponse() {
-        while (true) {
-            int keyCount = 0;
-            try {
-                keyCount = selector.selectNow();
-            } catch (Throwable x) {
-                log.error(x);
-            }
-
-            Iterator<SelectionKey> iterator = keyCount > 0 ? selector.selectedKeys().iterator() : null;
-            while (iterator != null && iterator.hasNext()) {
-                SelectionKey sk = iterator.next();
-                iterator.remove();
+    private static void readResponse() {
+        Consumer<SelectionKey> action = key -> {
+            if (key.isReadable()) {
+                SocketChannel channel = (SocketChannel) key.channel();
+                ByteBuffer byteBuffer = ByteBuffer.allocate(1024);
+                int read = 0;
                 try {
-                    if (sk.isReadable()) {
-                        SocketChannel channel = (SocketChannel) sk.channel();
-                        ByteBuffer byteBuffer = ByteBuffer.allocate(1024);
-                        int read = channel.read(byteBuffer);
-                        if (read > 0) {
-                            Response response = (Response) FSTUtil.getConf().asObject(byteBuffer.array());
-                            responseMap.put(response.requestId, response);
-                        }
-                    } else {
-                        log.error("this is impossible");
-                    }
+                    read = channel.read(byteBuffer);
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
+                if (read > 0) {
+                    Response response = (Response) FSTUtil.getConf().asObject(byteBuffer.array());
+                    responseMap.put(response.requestId, response);
+                }
+            }
+        };
+
+        while (true) {
+            try {
+                int i = selector.selectNow(action);
+                if (i == 0) {
+                    ThreadUtil.sleep(1);// 忙中偷闲
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
             }
         }
     }

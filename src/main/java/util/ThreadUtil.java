@@ -23,9 +23,9 @@ public class ThreadUtil {
         return scheduledPool;
     }
 
-    public static void sleep(long time) {
+    public static void sleep(long millis) {
         try {
-            Thread.sleep(time);
+            Thread.sleep(millis);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }

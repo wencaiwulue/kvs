@@ -96,7 +96,6 @@ public class Node implements Runnable {
 
                     HeartbeatResponse response = (HeartbeatResponse) Client.doRequest(address, new HeartbeatRequest(this.currTerm, this.address));
                     log.error("收到从follower:{}的心跳回包:{}", address.getPort(), response);
-                    break;
                 }
             }
         };
