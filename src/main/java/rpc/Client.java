@@ -1,6 +1,5 @@
 package rpc;
 
-import lombok.SneakyThrows;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import rpc.model.requestresponse.Request;
@@ -70,18 +69,17 @@ public class Client {
         return connections.get(remote);
     }
 
-    @SneakyThrows
     public static Response doRequest(InetSocketAddress remote, final Request request) {
         if (remote == null) return null;
 
-        requestTask.put(new RowRequest(remote, request));
+        requestTask.addLast(new RowRequest(remote, request));
         LockSupport.unpark(sendRequest);
 
         int m = 0;
-        int t = 500;
+        int t = 8; // 2^8 = 256
         while (m++ < t) {
             if (!responseMap.containsKey(request.requestId)) {
-                ThreadUtil.sleep(1);
+                ThreadUtil.sleep(1 << t);
             } else {
                 break;
             }
