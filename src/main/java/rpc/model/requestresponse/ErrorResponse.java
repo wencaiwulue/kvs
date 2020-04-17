@@ -15,4 +15,9 @@ public class ErrorResponse extends Response {
     private static final long serialVersionUID = 2408416712286509621L;
     int errorCode;
     String errorMsg;
+
+    public ErrorResponse(String errorMsg) {
+        this.errorMsg = errorMsg;
+        this.errorCode = 500;
+    }
 }

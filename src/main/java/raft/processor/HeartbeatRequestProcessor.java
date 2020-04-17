@@ -9,8 +9,6 @@ import rpc.model.requestresponse.HeartbeatResponse;
 import rpc.model.requestresponse.Request;
 import rpc.model.requestresponse.Response;
 
-import java.net.InetSocketAddress;
-
 /**
  * @author naison
  * @since 4/12/2020 17:52
@@ -28,7 +26,7 @@ public class HeartbeatRequestProcessor implements Processor {
     public Response process(Request req, Node node) {
         HeartbeatRequest request = (HeartbeatRequest) req;
         node.lastHeartBeat = System.nanoTime();
-        log.info("已经收到来自leader的心跳包, 其中包含了主节点的信息:{}, term:{}", request.getLeaderAddr(), request.getTerm());
+        log.error("{}收到来自leader的心跳包, leader info:{}", node.address.getPort(), request);
         if (request.getTerm() > node.currTerm) {// 说明自己已经out了，需要更新主节点信息
             node.currTerm = request.getTerm();
             node.state = State.FOLLOWER;

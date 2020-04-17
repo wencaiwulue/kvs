@@ -55,7 +55,7 @@ public class CURDProcessor implements Processor {
                 }
             }
 
-            if (ai.get() >= node.peerAddress.size() / 2D) { // more than half peer write to log
+            if (ai.get() >= node.peerAddress.size() / 2D) { // more than half peer already write to log
                 StateMachine.apply(logEntries, node);
             }
             return new CURDResponse();

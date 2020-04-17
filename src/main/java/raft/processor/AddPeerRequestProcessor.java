@@ -27,7 +27,7 @@ public class AddPeerRequestProcessor implements Processor {
         if (response != null && response.isSuccess()) {
             return new AddPeerResponse();
         } else {
-            return new ErrorResponse(400, "add peer failed, peer info: " + request.getPeer());
+            return new ErrorResponse("add peer failed, peer info: " + request.getPeer());
         }
     }
 }

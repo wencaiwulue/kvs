@@ -3,6 +3,7 @@ package rpc;
 
 import raft.Node;
 import rpc.model.requestresponse.AddPeerRequest;
+import rpc.model.requestresponse.Response;
 import util.ThreadUtil;
 
 import java.net.InetSocketAddress;
@@ -39,8 +40,12 @@ public class App {
         new App(p8000).start();
         new App(p8001).start();
         new App(p8002).start();
-        Client.doRequest(p8000, new AddPeerRequest(p8001));
-        Client.doRequest(p8000, new AddPeerRequest(p8002));
+
+        ThreadUtil.sleep(2000);
+//        Response response = Client.doRequest(p8000, new AddPeerRequest(p8001));
+//        System.out.println(response);
+        Response response = Client.doRequest(p8000, new AddPeerRequest(p8002));
+        System.out.println(response);
     }
 
 }

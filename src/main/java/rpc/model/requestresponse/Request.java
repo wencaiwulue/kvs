@@ -1,5 +1,7 @@
 package rpc.model.requestresponse;
 
+import util.IdUtil;
+
 import java.io.Serializable;
 
 /**
@@ -8,4 +10,9 @@ import java.io.Serializable;
  */
 public abstract class Request implements Serializable {
     private static final long serialVersionUID = 988750245807348185L;
+    public int requestId;
+
+    public Request() {
+        this.requestId = IdUtil.get();
+    }
 }

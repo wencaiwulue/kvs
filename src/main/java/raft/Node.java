@@ -17,9 +17,11 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SocketChannel;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -44,14 +46,14 @@ public class Node implements Runnable {
     public DB db;
     public LogDB logdb;
     public State state = State.FOLLOWER;// 默认是follower角色
-    long timeout = 150;//150ms -- 300ms randomized  超时时间,选举的时候，如果主节点挂了，则所有的节点开始timeout，然后最先timeout结束的节点变为candidate，
+    long timeout = 1000;//150ms -- 300ms randomized  超时时间,选举的时候，如果主节点挂了，则所有的节点开始timeout，然后最先timeout结束的节点变为candidate，
     // 参见竞选，然后发送竞选类型的请求，如果半数以上统一，则广播给所有人，
     // leader回一直发送心跳包，如果timeout后还没有发现心跳包来，就说明leader挂了，需要开始选举
 
     AtomicLong l = new AtomicLong(0);// 用来生成提案编号使用
 
     public volatile long lastHeartBeat;
-    final long heartBeatRate = 150;// the last and this heart beat difference is 150ms, also means if one node lastHeartBeat + heartBeatRate < currentNanoTime, leader dead. should elect leader
+    final long heartBeatRate = 1000;// the last and this heart beat difference is 150ms, also means if one node lastHeartBeat + heartBeatRate < currentNanoTime, leader dead. should elect leader
 
     public volatile int currTerm = 0;// 第几任leader
     public volatile InetSocketAddress lastVoteFor;// 判断当前选举是否已经投票
@@ -63,7 +65,6 @@ public class Node implements Runnable {
 
     private List<Processor> processors;
     private List<Processor> KVProcessors;
-
 
     public Node(InetSocketAddress address, Set<InetSocketAddress> peerAddress) {
         this.address = address;
@@ -84,7 +85,7 @@ public class Node implements Runnable {
                 elect();
             }
         };
-        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(elect, 0, 150, TimeUnit.MILLISECONDS);// 定期检查leader是不是死掉了
+        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(elect, 100, heartBeatRate, TimeUnit.MILLISECONDS);// 定期检查leader是不是死掉了
 
         Runnable heartbeat = () -> {
             if (!start) return;
@@ -94,7 +95,7 @@ public class Node implements Runnable {
                     if (address.equals(this.address)) continue;// 自己不发
 
                     HeartbeatResponse response = (HeartbeatResponse) Client.doRequest(address, new HeartbeatRequest(this.currTerm, this.address));
-                    log.error("收到从follower:{}的心跳回包:{}", address, response);
+                    log.error("收到从follower:{}的心跳回包:{}", address.getPort(), response);
                     break;
                 }
             }
@@ -104,7 +105,7 @@ public class Node implements Runnable {
     }
 
     @SuppressWarnings("NonAtomicOperationOnVolatileField")
-    void elect() {
+    private void elect() {
         if (this.peerAddress.isEmpty()) { // only one node, became the leader
             log.error("i'm a standalone leader");
             this.currTerm = this.currTerm + 1;
@@ -118,21 +119,25 @@ public class Node implements Runnable {
         try {
             AtomicInteger ai = new AtomicInteger(1);//先给自己投一票
             this.state = State.CANDIDATE;// 改变状态为candidate
-            for (InetSocketAddress addr : this.peerAddress) {// todo 这里可以使用callable + future，并行加速处理
-                if (addr.equals(this.address)) continue;
-
-                VoteResponse response = (VoteResponse) Client.doRequest(addr, new VoteRequest(this.address, this.currTerm + 1, this.logdb.lastLogIndex, this.logdb.lastLogTerm));
-                if (response != null) {
-                    log.error("收到从:{}的回包:{}", addr, response);
-                    if (response.isGrant()) {
-                        ai.addAndGet(1);
+            CountDownLatch latch = new CountDownLatch(this.peerAddress.size());
+            for (InetSocketAddress addr : this.peerAddress) {
+                Runnable r = () -> {
+                    VoteResponse response = (VoteResponse) Client.doRequest(addr, new VoteRequest(this.address, this.currTerm + 1, this.logdb.lastLogIndex, this.logdb.lastLogTerm));
+                    if (response != null) {
+                        log.error("收到从:{}的回包:{}", addr, response);
+                        if (response.isGrant()) {
+                            ai.addAndGet(1);
+                        } else {
+                            log.error("竟然不投票。远端主机为: {}", addr);
+                        }
                     } else {
-                        log.error("竟然不投票。远端主机为: {}", addr);
+                        log.error("可能是挂掉了。远端主机为: {}", addr);
                     }
-                } else {
-                    log.error("可能是挂掉了。远端主机为: {}", addr);
-                }
+                    latch.countDown();
+                };
+                ThreadUtil.getThreadPool().execute(r);
             }
+            latch.await(1, TimeUnit.MINUTES);
             if (ai.get() > Math.ceil(peerAddress.size() / 2D)) {// 超过半数了，成功了
                 log.error("选举成功，选出leader了{}", this.address);
                 this.currTerm = this.currTerm + 1;
@@ -141,13 +146,15 @@ public class Node implements Runnable {
             } else {
                 log.error("elect failed");
             }
+        } catch (InterruptedException e) {
+            log.error(e);
         } finally {
             this.writeLock.unlock();
         }
     }
 
 
-    boolean checkAlive(SocketChannel channel) {
+    public static boolean checkAlive(SocketChannel channel) {
         return channel != null && channel.isOpen() && channel.isConnected();
     }
 
@@ -161,18 +168,18 @@ public class Node implements Runnable {
         if (!this.start) return;
 
         Response r = null;
-        for (Processor processor : this.processors) {
+        List<Processor> processorList = new ArrayList<>(this.processors);
+        processorList.addAll(this.KVProcessors);
+
+        for (Processor processor : processorList) {
             if (processor.supports(req)) {
                 r = processor.process(req, this);
                 break;
             }
         }
 
-        for (Processor processor : this.KVProcessors) {
-            if (processor.supports(req)) {
-                r = processor.process(req, this);
-                break;
-            }
+        if (r != null) {
+            r.requestId = req.requestId;
         }
 
         try {

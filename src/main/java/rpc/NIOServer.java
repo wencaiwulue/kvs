@@ -16,8 +16,6 @@ import java.nio.channels.*;
 import java.util.Iterator;
 
 /**
- * Poller class.
- *
  * @author naison
  * @since 3/25/2020 19:32
  */
@@ -49,11 +47,12 @@ public class NIOServer implements Runnable {
         log.error("服务已启动，已经绑定{}", addr);
     }
 
-    protected void destroy() {
+    private void destroy() {
         close = true;
         selector.wakeup();
     }
 
+    @Override
     public void run() {
         // Loop until destroy() is called
         while (true) {
@@ -96,7 +95,7 @@ public class NIOServer implements Runnable {
                     channel.setOption(StandardSocketOptions.TCP_NODELAY, true);
                     channel.configureBlocking(false);
                     channel.register(selector, SelectionKey.OP_READ);
-                    log.error("已经创建链接{}", channel.getRemoteAddress());
+                    log.error("已经创建链接:{}", channel.getRemoteAddress());
                 } else if (selectionKey.isReadable()) {
                     boolean closeSocket = false;
                     if (!processRead(selectionKey)) {
@@ -144,38 +143,37 @@ public class NIOServer implements Runnable {
     // todo nio
     private boolean processRead(SelectionKey key) {
         try {
-            ThreadUtil.getThreadPool().execute(new Handler(key, node));
+            ThreadUtil.getThreadPool().execute(new Handler((SocketChannel) key.channel(), node));
         } catch (Exception e) {
             return false;
         }
         return true;
     }
 
-    static class Handler implements Runnable {
+    public static class Handler implements Runnable {
 
-        private SelectionKey key;
+        private SocketChannel channel;
         private Node node;
 
-        private Handler(SelectionKey key, Node node) {
-            this.key = key;
+        private Handler(SocketChannel key, Node node) {
+            this.channel = key;
             this.node = node;
         }
 
         @Override
         public void run() {
-            SocketChannel channel = (SocketChannel) key.channel();
             ByteBuffer byteBuffer = ByteBuffer.allocate(1024);
-            if (channel != null && channel.isOpen() && channel.isConnected()) {
+            if (this.channel != null && this.channel.isOpen() && this.channel.isConnected()) {
                 try {
-                    int read = channel.read(byteBuffer);
+                    int read = this.channel.read(byteBuffer);
                     if (read <= 0) return;// 也就是客户端主动断开链接，因为在客户端断开的时候，也会发送一个读事件
 
-                    Request request = (Request) FSTUtil.getConf().asObject(byteBuffer.array());
-                    node.handle(request, channel);// handle the request
+                    Request o = (Request) FSTUtil.getConf().asObject(byteBuffer.array());
+                    this.node.handle((Request) o, this.channel);// handle the request
                 } catch (IOException e) {
                     log.error("出错了，关闭channel", e);
                     try {
-                        channel.close();
+                        this.channel.close();
                     } catch (Exception ex) {
                         log.error(ex);
                     }

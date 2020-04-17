@@ -27,7 +27,7 @@ public class RemovePeerRequestProcessor implements Processor {
         if (response != null) {
             return new RemovePeerResponse();
         } else {
-            return new ErrorResponse(400, "remove peer failed, because don`t exists node: " + request.getPeer());
+            return new ErrorResponse( "remove peer failed, because don`t exists node: " + request.getPeer());
         }
     }
 }

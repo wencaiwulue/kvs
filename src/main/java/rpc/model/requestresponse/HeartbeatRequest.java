@@ -1,6 +1,7 @@
 package rpc.model.requestresponse;
 
 import lombok.Data;
+import lombok.ToString;
 
 import java.net.InetSocketAddress;
 
@@ -9,6 +10,7 @@ import java.net.InetSocketAddress;
  * @since 4/12/2020 16:53
  */
 @Data
+@ToString
 public class HeartbeatRequest extends Request {
     private static final long serialVersionUID = 6824938127696128332L;
     int term;

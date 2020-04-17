@@ -2,6 +2,7 @@ package rpc.model.requestresponse;
 
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 /**
  * @author naison
@@ -9,6 +10,7 @@ import lombok.NoArgsConstructor;
  */
 @Data
 @NoArgsConstructor
+@ToString
 public class AddPeerResponse extends Response {
     private static final long serialVersionUID = 1051441981605736599L;
 }
