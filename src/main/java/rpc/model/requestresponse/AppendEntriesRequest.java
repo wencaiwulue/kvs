@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import raft.LogEntry;
+import raft.NodeAddress;
 
 import java.net.InetSocketAddress;
 import java.util.List;
@@ -17,6 +18,7 @@ import java.util.List;
 @AllArgsConstructor
 public class AppendEntriesRequest extends Request {
     private static final long serialVersionUID = -2322012843577274410L;
-    List<LogEntry> entries;
-    InetSocketAddress leaderAddr;
+    public List<LogEntry> entries;
+    public NodeAddress leaderAddress;
+    public int term;
 }

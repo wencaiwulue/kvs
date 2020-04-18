@@ -2,12 +2,13 @@ package rpc;
 
 
 import raft.Node;
+import raft.NodeAddress;
 import rpc.model.requestresponse.AddPeerRequest;
 import rpc.model.requestresponse.Response;
 import util.ThreadUtil;
 
 import java.net.InetSocketAddress;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -17,16 +18,20 @@ import java.util.Set;
  */
 public class App {
 
-    private NIOServer nioServer;
-    private Node node;
+    private final NIOServer nioServer;
+    private final Node node;
 
     public App(InetSocketAddress address) {
-        this(address, new HashSet<>());
+        this(new NodeAddress(true, address));
     }
 
-    public App(InetSocketAddress address, Set<InetSocketAddress> peerAddress) {
-        this.node = new Node(address, peerAddress);
-        this.nioServer = new NIOServer(address, this.node);
+    public App(NodeAddress address) {
+        this(address, new HashSet<>(Collections.singletonList(address)));
+    }
+
+    public App(NodeAddress address, Set<NodeAddress> allNodeAddresses) {
+        this.node = new Node(address, allNodeAddresses);
+        this.nioServer = new NIOServer(address.socketAddress, this.node);
     }
 
     public void start() {
@@ -43,7 +48,7 @@ public class App {
         new App(follower).start();
         ThreadUtil.sleep(5000);
         if (port != 8000) {
-            Response response = Client.doRequest(p8000, new AddPeerRequest(follower));
+            Response response = Client.doRequest(new NodeAddress(true, p8000), new AddPeerRequest(new NodeAddress(true, follower)));
             System.out.println(response);
         }
     }

@@ -5,10 +5,10 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import raft.LogEntry;
 import raft.Node;
+import raft.NodeAddress;
 import rpc.Client;
 import rpc.model.requestresponse.*;
 
-import java.net.InetSocketAddress;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -33,7 +33,7 @@ public class CURDProcessor implements Processor {
         try {
             CURDKVRequest request = (CURDKVRequest) req;
             if (!node.isLeader()) {
-                return Client.doRequest(node.leaderAddr, req); // redirect to leader
+                return Client.doRequest(node.leaderAddress, req); // redirect to leader
             }
 
             List<LogEntry> logEntries = Collections.singletonList(new LogEntry(-1, node.currTerm, request.getKey(), ((CURDKVRequest) req).getValue()));
@@ -42,20 +42,20 @@ public class CURDProcessor implements Processor {
             }
 
             AtomicInteger ai = new AtomicInteger(0);
-            for (InetSocketAddress peerAddress : node.peerAddress) {
+            for (NodeAddress peerAddress : node.allNodeAddressExcludeMe()) {
                 AppendEntriesResponse res = (AppendEntriesResponse) Client.doRequest(peerAddress, new AppendEntriesRequest(logEntries, node.address));
                 if (res != null) {
                     if (res.isSuccess()) {
                         ai.addAndGet(1);
                     } else if (res.getTerm() > node.currTerm) {// receive term is bigger than myself, change to follower, discard current request
-                        node.leaderAddr = null;
+                        node.leaderAddress = null;
                         node.currTerm = res.getTerm();
                         node.lastVoteFor = null;
                     }
                 }
             }
 
-            if (ai.get() >= node.peerAddress.size() / 2D) { // more than half peer already write to log
+            if (ai.get() >= node.allNodeAddresses.size() / 2D) { // more than half peer already write to log
                 StateMachine.apply(logEntries, node);
             }
             return new CURDResponse();

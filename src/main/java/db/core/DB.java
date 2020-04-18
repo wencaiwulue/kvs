@@ -29,23 +29,23 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class DB {
     private static final Logger log = LogManager.getLogger(DB.class);
 
-    private int size = 1000 * 1000;// 缓冲区大小
-    private int thresholdStart = (int) (size * 0.8);// 如果超过这个阈值，就启动备份写入流程
-    private int thresholdStop = (int) (size * 0.2); // 低于这个值就停止写入，因为管道是不停写入的，所以基本不会出现管道为空的情况
-    private ArrayDeque<byte[]> buffer = new ArrayDeque<>(size);// 这里是缓冲区，也就是每隔一段时间备份append的数据，或者这个buffer满了就备份数据
+    private final int size = 1000 * 1000;// 缓冲区大小
+    private final int thresholdStart = (int) (size * 0.8);// 如果超过这个阈值，就启动备份写入流程
+    private final int thresholdStop = (int) (size * 0.2); // 低于这个值就停止写入，因为管道是不停写入的，所以基本不会出现管道为空的情况
+    private final ArrayDeque<byte[]> buffer = new ArrayDeque<>(size);// 这里是缓冲区，也就是每隔一段时间备份append的数据，或者这个buffer满了就备份数据
 
-    private byte mode = 2; // 备份方式为增量还是快照，或者是混合模式, 0--append, 1--snapshot, 2--append+snapshot
+    private final byte mode = 2; // 备份方式为增量还是快照，或者是混合模式, 0--append, 1--snapshot, 2--append+snapshot
     private volatile long lastAppendBackupTime;
     private final long appendRate = 1000 * 1000; // 每一秒append一次
     private volatile long lastSnapshotBackupTime;
     private final long snapshotRate = 60 * appendRate; // 每一分钟snapshot一下
 
-    private ConcurrentHashMap<String, Object> map;// RockDB or LevelDB? B-tree?
-    private PriorityBlockingQueue<ExpireKey> expireKeys; // java.util.PriorityQueue ??
+    private final ConcurrentHashMap<String, Object> map;// RockDB or LevelDB? B-tree?
+    private final PriorityBlockingQueue<ExpireKey> expireKeys; // java.util.PriorityQueue ??
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Lock readLock = this.lock.readLock();
     private final Lock writeLock = this.lock.writeLock();
-    private String dbPath;
+    private final String dbPath;
     private RandomAccessFile raf;
     // 可以判断是否存在kvs中，
     @SuppressWarnings("all")

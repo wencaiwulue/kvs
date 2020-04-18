@@ -3,7 +3,7 @@ package raft.processor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import raft.Node;
-import raft.enums.State;
+import raft.enums.Role;
 import rpc.model.requestresponse.Request;
 import rpc.model.requestresponse.Response;
 import rpc.model.requestresponse.VoteRequest;
@@ -28,13 +28,16 @@ public class VoteRequestProcessor implements Processor {
         try {
             VoteRequest request = (VoteRequest) req;
             log.error("收到vote请求.from:{} to {}, vote info:{}", request.getCandidateId(), node.getAddress(), request);
-            int i = Long.compare(request.getLastLogTerm(), node.logdb.lastLogTerm);
-//            int j = Long.compare(request.getLastLogIndex(), node.logdb.lastLogIndex);
-            if (i > 0 || (i == 0 && node.lastVoteFor == null)) {// 对方term比我大，或者还没投过票
+            int i = Long.compare(request.getTerm(), node.currTerm);
+
+            int j = Long.compare(request.getLastLogTerm(), node.logdb.lastLogTerm);
+            if (j == 0) j = Long.compare(request.getLastLogIndex(), node.logdb.lastLogIndex);
+
+            if (i > 0 || (j >= 0 && node.lastVoteFor == null)) {// 对方term比我大，或者还没投过票
                 node.lastVoteFor = request.getCandidateId();
                 node.currTerm = request.getTerm();
-                node.leaderAddr = null;
-                node.state = State.FOLLOWER;
+                node.leaderAddress = null;
+                node.role = Role.FOLLOWER;
                 return new VoteResponse(request.getTerm(), true);
             } else {
                 return new VoteResponse(node.currTerm, false);

@@ -3,6 +3,7 @@ package rpc.model.requestresponse;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import raft.NodeAddress;
 
 import java.net.InetSocketAddress;
 
@@ -15,9 +16,14 @@ import java.net.InetSocketAddress;
 @AllArgsConstructor
 public class AddPeerRequest extends Request {
     private static final long serialVersionUID = -4132647511647067775L;
-    InetSocketAddress peer;
+    public NodeAddress peer;
+    public NodeAddress sender;
 
-    public InetSocketAddress getPeer() {
+    public AddPeerRequest(NodeAddress peer) {
+        this.peer = peer;
+    }
+
+    public NodeAddress getPeer() {
         return peer;
     }
 }

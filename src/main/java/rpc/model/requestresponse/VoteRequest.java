@@ -2,6 +2,7 @@ package rpc.model.requestresponse;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import raft.NodeAddress;
 
 import java.net.InetSocketAddress;
 
@@ -13,7 +14,7 @@ import java.net.InetSocketAddress;
 @AllArgsConstructor
 public class VoteRequest extends Request {
     private static final long serialVersionUID = -6056301287980072876L;
-    private InetSocketAddress candidateId;
+    private NodeAddress candidateId;
     private int term;
     private int lastLogIndex;
     private int lastLogTerm;

@@ -2,8 +2,7 @@ package rpc.model.requestresponse;
 
 import lombok.Data;
 import lombok.ToString;
-
-import java.net.InetSocketAddress;
+import raft.NodeAddress;
 
 /**
  * @author naison
@@ -14,9 +13,9 @@ import java.net.InetSocketAddress;
 public class HeartbeatRequest extends Request {
     private static final long serialVersionUID = 6824938127696128332L;
     int term;
-    InetSocketAddress leaderAddr;
+    NodeAddress leaderAddr;
 
-    public HeartbeatRequest(int term, InetSocketAddress leaderAddr) {
+    public HeartbeatRequest(int term, NodeAddress leaderAddr) {
         this.term = term;
         this.leaderAddr = leaderAddr;
     }
@@ -25,7 +24,7 @@ public class HeartbeatRequest extends Request {
         return term;
     }
 
-    public InetSocketAddress getLeaderAddr() {
+    public NodeAddress getLeaderAddr() {
         return leaderAddr;
     }
 }

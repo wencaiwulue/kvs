@@ -22,7 +22,7 @@ public class RemovePeerRequestProcessor implements Processor {
     @Override
     public Response process(Request req, Node node) {
         RemovePeerRequest request = (RemovePeerRequest) req;
-        node.peerAddress.remove(request.getPeer());
+        node.allNodeAddresses.remove(request.getPeer());
         Response response = Client.doRequest(request.getPeer(), new PowerRequest(true, false));
         if (response != null) {
             return new RemovePeerResponse();
