@@ -36,20 +36,20 @@ public class CURDProcessor implements Processor {
                 return Client.doRequest(node.leaderAddress, req); // redirect to leader
             }
 
-            List<LogEntry> logEntries = Collections.singletonList(new LogEntry(-1, node.currTerm, request.getKey(), ((CURDKVRequest) req).getValue()));
+            List<LogEntry> logEntries = Collections.singletonList(new LogEntry(-1, node.currentTerm, request.getKey(), ((CURDKVRequest) req).getValue()));
             for (LogEntry log : logEntries) {
                 log.setIndex(++node.logdb.lastLogIndex);
             }
 
             AtomicInteger ai = new AtomicInteger(0);
             for (NodeAddress peerAddress : node.allNodeAddressExcludeMe()) {
-                AppendEntriesResponse res = (AppendEntriesResponse) Client.doRequest(peerAddress, new AppendEntriesRequest(logEntries, node.address));
+                AppendEntriesResponse res = (AppendEntriesResponse) Client.doRequest(peerAddress, new AppendEntriesRequest(logEntries, node.address, node.currentTerm, node.getLastAppliedIndex().intValue(), node.getLastAppliedTerm(), node.committedIndex));
                 if (res != null) {
                     if (res.isSuccess()) {
                         ai.addAndGet(1);
-                    } else if (res.getTerm() > node.currTerm) {// receive term is bigger than myself, change to follower, discard current request
+                    } else if (res.getTerm() > node.currentTerm) {// receive term is bigger than myself, change to follower, discard current request
                         node.leaderAddress = null;
-                        node.currTerm = res.getTerm();
+                        node.currentTerm = res.getTerm();
                         node.lastVoteFor = null;
                     }
                 }

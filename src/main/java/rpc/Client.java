@@ -5,6 +5,7 @@ import org.apache.logging.log4j.Logger;
 import raft.NodeAddress;
 import rpc.model.requestresponse.Request;
 import rpc.model.requestresponse.Response;
+import util.ByteArrayUtil;
 import util.FSTUtil;
 import util.ThreadUtil;
 
@@ -52,14 +53,14 @@ public class Client {
             synchronized (remote.toString().intern()) {
                 if (!connections.containsKey(remote) || !connections.get(remote).isOpen() || !connections.get(remote).isConnected()) {
                     try {
-                        SocketChannel channel = SocketChannel.open(remote.socketAddress);
+                        SocketChannel channel = SocketChannel.open(remote.getSocketAddress());
                         channel.setOption(StandardSocketOptions.TCP_NODELAY, true);
                         channel.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
                         channel.configureBlocking(false);
                         channel.register(selector, SelectionKey.OP_READ);
                         connections.put(remote, channel);
                     } catch (ConnectException e) {
-                        log.error("remote:{}, 连接失败, message:{}。", remote.socketAddress.getPort(), e.getMessage());
+                        log.error("remote:{}, 连接失败, message:{}。", remote.getSocketAddress().getPort(), e.getMessage());
                         remote.alive = false;
                     } catch (IOException e) {
                         log.error(e);
@@ -76,7 +77,7 @@ public class Client {
         requestTask.addLast(new SocketRequest(remote, request));
         LockSupport.unpark(sendRequest);
 
-        int m = 3; // 2^3 = 8
+        int m = 1;
         int t = 8; // 2^8 = 256
         while (m++ < t) {
             if (!responseMap.containsKey(request.requestId)) {
@@ -99,8 +100,7 @@ public class Client {
                         SocketChannel channel = getConnection(socketRequest.address);
                         if (channel != null && socketRequest.address.alive) {
                             try {
-                                // todo 尝试使用DirectByteBuffer实现零拷贝
-                                int write = channel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(socketRequest.request)));
+                                int write = channel.write(ByteArrayUtil.write(socketRequest.request));
                                 if (write <= 0) throw new IOException("魔鬼！！！");
                                 success = true;
                                 break;
@@ -124,28 +124,28 @@ public class Client {
             if (key.isReadable()) {
                 SocketChannel channel = (SocketChannel) key.channel();
                 ByteBuffer byteBuffer = ByteBuffer.allocate(1024);
-                int read = 0;
                 try {
-                    read = channel.read(byteBuffer);
+                    int read = channel.read(byteBuffer);
+                    if (read > 0) {
+                        Response response = (Response) FSTUtil.getConf().asObject(byteBuffer.array());
+                        responseMap.put(response.requestId, response);
+                    } else if (read < 0) {
+                        if (key.isValid()) {
+                            key.cancel();
+                        }
+                    }
+
                 } catch (IOException e) {
                     e.printStackTrace();
                     if (e.getMessage().contains("An existing connection was forcibly closed by the remote host")) {
                         key.cancel();
+                        try {
+                            channel.close();
+                        } catch (Exception ignored) {
+                        }
                     }
                 }
-                if (read > 0) {
-                    Response response = (Response) FSTUtil.getConf().asObject(byteBuffer.array());
-                    responseMap.put(response.requestId, response);
-                } else {
-                    if (key.isValid()) {
-                        key.cancel();
-                    }
-                    try {
-                        channel.close();
-                    } catch (Exception ignored) {
-                    }
 
-                }
             }
         };
 

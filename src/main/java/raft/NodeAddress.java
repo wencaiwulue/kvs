@@ -1,7 +1,7 @@
 package raft;
 
 import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
@@ -12,13 +12,13 @@ import java.util.Objects;
  * @author naison
  * @since 4/18/2020 11:04
  */
-@Data
+@Getter
 @NoArgsConstructor
 @AllArgsConstructor
 public class NodeAddress implements Serializable {
     private static final long serialVersionUID = 3723897904539137708L;
-    public boolean alive;
-    public InetSocketAddress socketAddress;
+    public boolean alive; // host status
+    private InetSocketAddress socketAddress;
 
     @Override
     public boolean equals(Object o) {
@@ -31,5 +31,13 @@ public class NodeAddress implements Serializable {
     @Override
     public int hashCode() {
         return Objects.hash(socketAddress);
+    }
+
+    @Override
+    public String toString() {
+        return "NodeAddress{" +
+                "alive=" + alive +
+                ", socketAddress=" + socketAddress +
+                '}';
     }
 }

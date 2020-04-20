@@ -24,7 +24,7 @@ public class AddPeerRequestProcessor implements Processor {
     public Response process(Request req, Node node) {
         AddPeerRequest request = (AddPeerRequest) req;
 
-        node.allNodeAddresses.add(request.peer);
+        node.allNodeAddresses.add(request.getPeer());
 
         if (request.getPeer().equals(request.getSender())) {
             return new AddPeerResponse();// 非主节点，终结 exit 1
@@ -34,7 +34,7 @@ public class AddPeerRequestProcessor implements Processor {
             if (node.leaderAddress == null) {
                 return Client.doRequest(request.getPeer(), new AddPeerRequest(node.address, node.address));
             } else {
-                if (request.sender == null) {
+                if (request.getPeer() == null) {
                     return Client.doRequest(node.leaderAddress, request);
                 } else {
                     return new AddPeerResponse();// exit 2

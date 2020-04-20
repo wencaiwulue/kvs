@@ -31,7 +31,7 @@ public class App {
 
     public App(NodeAddress address, Set<NodeAddress> allNodeAddresses) {
         this.node = new Node(address, allNodeAddresses);
-        this.nioServer = new NIOServer(address.socketAddress, this.node);
+        this.nioServer = new NIOServer(address.getSocketAddress(), this.node);
     }
 
     public void start() {

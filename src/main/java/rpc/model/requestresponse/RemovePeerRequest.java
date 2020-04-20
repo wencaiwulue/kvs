@@ -1,16 +1,16 @@
 package rpc.model.requestresponse;
 
+import lombok.AllArgsConstructor;
 import lombok.Data;
 import raft.NodeAddress;
-
-import java.net.InetSocketAddress;
 
 /**
  * @author naison
  * @since 4/12/2020 15:13
  */
-@Data
+@AllArgsConstructor
 public class RemovePeerRequest extends Request {
     private static final long serialVersionUID = 369763071864425931L;
-    NodeAddress peer;
+    public NodeAddress peer;
+    public NodeAddress sender;
 }

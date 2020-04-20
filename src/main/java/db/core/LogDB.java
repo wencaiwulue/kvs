@@ -125,7 +125,7 @@ public class LogDB {
         map.put(key, value);
         byte[] kb = key.getBytes();
         byte[] vb = KryoUtil.asByteArray(value);
-        buffer.push(ByteArrayUtil.combine(kb, vb));
+        buffer.push(ByteArrayUtil.combineKeyVal(kb, vb));
     }
 
     public void remove(String key) {

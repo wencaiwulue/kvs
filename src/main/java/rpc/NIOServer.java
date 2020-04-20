@@ -33,7 +33,7 @@ public class NIOServer implements Runnable {
             this.bind(addr);
             this.node = node;
         } catch (IOException e) {
-            log.error("during start occurs error, shutting down...");
+            log.error("during start occurs error, shutting down...", e);
             this.destroy();
             Runtime.getRuntime().exit(-1);
         }
@@ -140,7 +140,6 @@ public class NIOServer implements Runnable {
         }
     }
 
-    // todo nio
     private boolean processRead(SelectionKey key) {
         try {
             ThreadUtil.getThreadPool().execute(new Handler(key, node));
@@ -152,8 +151,8 @@ public class NIOServer implements Runnable {
 
     public static class Handler implements Runnable {
 
-        private SelectionKey key;
-        private Node node;
+        private final SelectionKey key;
+        private final Node node;
 
         private Handler(SelectionKey key, Node node) {
             this.key = key;
@@ -163,14 +162,14 @@ public class NIOServer implements Runnable {
         @Override
         public void run() {
             SocketChannel channel = (SocketChannel) key.channel();
-            ByteBuffer byteBuffer = ByteBuffer.allocate(1024);
             if (channel != null /*&& channel.isOpen() && channel.isConnected()*/) {
                 try {
+                    ByteBuffer byteBuffer = ByteBuffer.allocate(1024);
                     int read = channel.read(byteBuffer);
-                    if (read <= 0) return;// 也就是客户端主动断开链接，因为在客户端断开的时候，也会发送一个读事件
-
-                    Request o = (Request) FSTUtil.getConf().asObject(byteBuffer.array());
-                    this.node.handle(o, channel);// handle the request
+                    if (read > 0) {// 客户端主动断开链接，也会发送一个读事件 返回值为-1
+                        Request o = (Request) FSTUtil.getConf().asObject(byteBuffer.array());
+                        this.node.handle(o, channel);// handle the request
+                    }
                 } catch (IOException e) {
                     log.error("出错了，关闭channel", e);
                     try {

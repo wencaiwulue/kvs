@@ -4,9 +4,7 @@ import rpc.App;
 import rpc.Client;
 import rpc.model.requestresponse.AddPeerRequest;
 
-import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.util.HashSet;
 
 /**
  * @author naison

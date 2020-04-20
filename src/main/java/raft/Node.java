@@ -9,6 +9,7 @@ import raft.enums.Role;
 import raft.processor.*;
 import rpc.Client;
 import rpc.model.requestresponse.*;
+import util.ByteArrayUtil;
 import util.FSTUtil;
 import util.ThreadUtil;
 
@@ -20,6 +21,7 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
@@ -47,11 +49,15 @@ public class Node implements Runnable {
     // leader回一直发送心跳包，如果timeout后还没有发现心跳包来，就说明leader挂了，需要开始选举
 
     AtomicLong l = new AtomicLong(0);// 用来生成提案编号使用
+    public int committedIndex;
+    private AtomicLong lastAppliedIndex;
+    private int lastAppliedTerm;
+    public volatile long nextIndex;
 
     public volatile long lastHeartBeat;
     final long heartBeatRate = 1000;// the last and this heart beat difference is 150ms, also means if one node lastHeartBeat + heartBeatRate < currentNanoTime, leader dead. should elect leader
 
-    public volatile int currTerm = 0;// 第几任leader
+    public volatile int currentTerm = 0;// 第几任leader
     public volatile NodeAddress lastVoteFor;// 判断当前选举是否已经投票
     public volatile NodeAddress leaderAddress;//leader节点信息，因为所有的数据处理都需要leader来操作。
 
@@ -65,38 +71,44 @@ public class Node implements Runnable {
     public Node(NodeAddress address, Set<NodeAddress> allNodeAddresses) {
         this.address = address;
         this.allNodeAddresses = allNodeAddresses;
-        this.db = new DB("C:\\Users\\89570\\Documents\\kvs_" + address.socketAddress.getPort() + ".db");
-        this.logdb = new LogDB("C:\\Users\\89570\\Documents\\kvs_" + address.socketAddress.getPort() + ".log");
-        this.processors = Arrays.asList(new AddPeerRequestProcessor(), new HeartbeatRequestProcessor(), new RemovePeerRequestProcessor(), new VoteRequestProcessor(), new PowerRequestProcessor());
+        this.db = new DB("C:\\Users\\89570\\Documents\\kvs_" + address.getSocketAddress().getPort() + ".db");
+        this.logdb = new LogDB("C:\\Users\\89570\\Documents\\kvs_" + address.getSocketAddress().getPort() + ".log");
+        this.nextIndex = this.logdb.lastLogIndex + 1;
+        this.processors = Arrays.asList(new AddPeerRequestProcessor(), new RemovePeerRequestProcessor(), new VoteRequestProcessor(), new PowerRequestProcessor());
         this.KVProcessors = Arrays.asList(new AppendEntriesRequestProcessor(), new ReplicationRequestProcessor(), new CURDProcessor());
     }
 
     @Override
     public void run() {
         Runnable elect = () -> {
-            if (!start) return;
+            if (!this.start) return;
 
             int i = ThreadLocalRandom.current().nextInt(150);// 0-150ms, 随机一段时间，避免同时选举
-            if (leaderAddress == null || (System.nanoTime() > lastHeartBeat + heartBeatRate + i && !this.isLeader())) {// 很久没有来自leader的心跳，说明leader卒了，选举开始
+            if (this.leaderAddress == null || (!this.isLeader() && System.nanoTime() > lastHeartBeat + heartBeatRate + i)) {// 很久没有来自leader的心跳，说明leader卒了，选举开始
                 elect();
             }
         };
         ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(elect, 100, heartBeatRate, TimeUnit.MILLISECONDS);// 定期检查leader是不是死掉了
 
         Runnable heartbeat = () -> {
-            if (!start) return;
+            this.writeLock.lock();
+            try {
+                if (!this.start) return;
 
-            if (isLeader()) {// 如果自己是主领导，就需要给各个节点发送心跳包
-                for (NodeAddress address : this.allNodeAddressExcludeMe()) {
-                    if (!address.alive) continue;
+                if (isLeader()) {// 如果自己是主领导，就需要给各个节点发送心跳包
+                    for (NodeAddress address : this.allNodeAddressExcludeMe()) {
+                        if (!address.isAlive()) continue;
 
-                    HeartbeatResponse response = (HeartbeatResponse) Client.doRequest(address, new HeartbeatRequest(this.currTerm, this.address));
-                    log.error("收到从follower:{}的心跳回包:{}", address.socketAddress.getPort(), response);
+                        AppendEntriesResponse response = (AppendEntriesResponse) Client.doRequest(address, new AppendEntriesRequest(Collections.emptyList(), this.address, this.currentTerm, this.lastAppliedTerm, this.lastAppliedIndex.intValue(), this.committedIndex));
+                        log.error("收到从follower:{}的心跳回包:{}", address.getSocketAddress().getPort(), response);
+                    }
                 }
+            } finally {
+                this.writeLock.unlock();
             }
         };
-        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(heartbeat, 0, heartBeatRate, TimeUnit.MILLISECONDS);// 每150ms心跳一下
-        start = true;
+        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(heartbeat, 0, this.heartBeatRate, TimeUnit.MILLISECONDS);// 每150ms心跳一下
+        this.start = true;
     }
 
     @SuppressWarnings("NonAtomicOperationOnVolatileField")
@@ -109,15 +121,21 @@ public class Node implements Runnable {
         this.writeLock.lock();
         try {
             AtomicInteger ai = new AtomicInteger(1);//先给自己投一票
+            AtomicBoolean fail = new AtomicBoolean(false);
             this.role = Role.CANDIDATE;// 改变状态为candidate
             CountDownLatch latch = new CountDownLatch(this.allNodeAddressExcludeMe().size());
             for (NodeAddress addr : this.allNodeAddressExcludeMe()) {
                 Runnable r = () -> {
-                    VoteResponse response = (VoteResponse) Client.doRequest(addr, new VoteRequest(this.address, this.currTerm + 1, this.logdb.lastLogIndex, this.logdb.lastLogTerm));
+                    VoteResponse response = (VoteResponse) Client.doRequest(addr, new VoteRequest(this.address, this.currentTerm + 1, this.logdb.lastLogIndex, this.logdb.lastLogTerm));
                     if (response != null) {
                         log.error("收到从:{}的投票回包:{}", addr, response);
                         if (response.isGrant()) {
                             ai.addAndGet(1);
+                        } else if (response.getTerm() > this.currentTerm) {
+                            this.role = Role.FOLLOWER;
+                            this.currentTerm = response.getTerm();
+                            fail.set(true);
+                            return;
                         } else {
                             log.error("竟然不投票。远端主机为: {}", addr);
                         }
@@ -128,10 +146,13 @@ public class Node implements Runnable {
                 };
                 ThreadUtil.getThreadPool().execute(r);
             }
-            latch.await(1, TimeUnit.MINUTES);
+            latch.await(5, TimeUnit.SECONDS);
+            if (fail.getAcquire()) {
+                return;
+            }
             if (ai.get() > Math.ceil(allNodeAddresses.size() / 2D)) {// 超过半数了，成功了
                 log.error("选举成功，选出leader了{}", this.address);
-                this.currTerm = this.currTerm + 1;
+                this.currentTerm = this.currentTerm + 1;
                 this.leaderAddress = this.address;
                 this.role = Role.LEADER;
             } else {
@@ -174,7 +195,7 @@ public class Node implements Runnable {
         }
 
         try {
-            channel.write(ByteBuffer.wrap(FSTUtil.getConf().asByteArray(r)));
+            channel.write(ByteArrayUtil.write(r));
         } catch (ClosedChannelException e) {
             log.error("这里的channel失效了, 需要重试吗?");
         } catch (IOException e) {

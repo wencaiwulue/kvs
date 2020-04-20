@@ -26,27 +26,29 @@ public class AppendEntriesRequestProcessor implements Processor {
         node.writeLock.lock();
         try {
             AppendEntriesRequest request = (AppendEntriesRequest) req;
-            if (request.term < node.currTerm) {
-                return new AppendEntriesResponse(node.currTerm, false, node.logdb.lastLogIndex);
-            } else if (request.term > node.currTerm) {
-                node.currTerm = request.term;
+            if (request.getTerm() < node.currentTerm) {
+                return new AppendEntriesResponse(node.currentTerm, false, node.logdb.lastLogIndex);
+            } else if (request.getTerm() > node.currentTerm) {
+                node.currentTerm = request.getTerm();
                 node.leaderAddress = null;
                 node.lastVoteFor = null;
                 node.role = Role.FOLLOWER;
             }
 
-            if (!request.leaderAddress.equals(node.leaderAddress)) {
-                if (request.term + 1 > node.currTerm) {
-                    node.currTerm = request.term + 1;
+            if (!request.getLeaderId().equals(node.leaderAddress)) {
+                if (request.getTerm() + 1 > node.currentTerm) {
+                    node.currentTerm = request.getTerm() + 1;
                     node.leaderAddress = null;
                     node.lastVoteFor = null;
                     node.role = Role.FOLLOWER;
                 }
-                return new AppendEntriesResponse(request.term + 1, false, node.logdb.lastLogIndex);
+                return new AppendEntriesResponse(request.getTerm() + 1, false, node.logdb.lastLogIndex);
             }
 
-            node.logdb.save(request.getEntries());
-            return new AppendEntriesResponse(node.currTerm, true, node.logdb.lastLogIndex);
+            if (!request.getEntries().isEmpty()) { // otherwise it's a heartbeat
+                node.logdb.save(request.getEntries());
+            }
+            return new AppendEntriesResponse(node.currentTerm, true, node.logdb.lastLogIndex);
         } finally {
             node.writeLock.unlock();
         }
