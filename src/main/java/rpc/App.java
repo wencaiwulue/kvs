@@ -46,7 +46,6 @@ public class App {
         int port = Integer.parseInt(args[0]);
         InetSocketAddress follower = new InetSocketAddress("localhost", port);
         new App(follower).start();
-        ThreadUtil.sleep(5000);
         if (port != 8000) {
             Response response = Client.doRequest(new NodeAddress(true, p8000), new AddPeerRequest(new NodeAddress(true, follower)));
             System.out.println(response);

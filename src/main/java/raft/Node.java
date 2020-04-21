@@ -10,11 +10,9 @@ import raft.processor.*;
 import rpc.Client;
 import rpc.model.requestresponse.*;
 import util.ByteArrayUtil;
-import util.FSTUtil;
 import util.ThreadUtil;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SocketChannel;
 import java.util.*;
@@ -50,12 +48,14 @@ public class Node implements Runnable {
 
     AtomicLong l = new AtomicLong(0);// 用来生成提案编号使用
     public int committedIndex;
-    private AtomicLong lastAppliedIndex;
-    private int lastAppliedTerm;
+    private AtomicLong lastAppliedIndex = new AtomicLong(0);
+    private int lastAppliedTerm = 0;
     public volatile long nextIndex;
 
-    public volatile long lastHeartBeat;
-    final long heartBeatRate = 1000;// the last and this heart beat difference is 150ms, also means if one node lastHeartBeat + heartBeatRate < currentNanoTime, leader dead. should elect leader
+    final long heartBeatRate = 500;// the last and this heart beat difference is 150ms, also means if one node lastHeartBeat + heartBeatRate < currentNanoTime, leader dead. should elect leader
+    final long electRate = 2000;// the last and this heart beat difference is 150ms, also means if one node lastHeartBeat + heartBeatRate < currentNanoTime, leader dead. should elect leader
+    public volatile long nextElectTime = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(this.electRate + ThreadLocalRandom.current().nextInt(1000, 2000));// 下次选举时间，总是会因为心跳而推迟，会在因为主leader down后开始选举
+    public volatile long nextHeartbeatTime /*= System.nanoTime() + this.heartBeatRate*/;// 下次心跳时间。对leader有用
 
     public volatile int currentTerm = 0;// 第几任leader
     public volatile NodeAddress lastVoteFor;// 判断当前选举是否已经投票
@@ -67,6 +67,9 @@ public class Node implements Runnable {
 
     private List<Processor> processors;
     private List<Processor> KVProcessors;
+
+    private Runnable heartbeat;
+    public Runnable elect;
 
     public Node(NodeAddress address, Set<NodeAddress> allNodeAddresses) {
         this.address = address;
@@ -80,34 +83,42 @@ public class Node implements Runnable {
 
     @Override
     public void run() {
-        Runnable elect = () -> {
-            if (!this.start) return;
-
-            int i = ThreadLocalRandom.current().nextInt(150);// 0-150ms, 随机一段时间，避免同时选举
-            if (this.leaderAddress == null || (!this.isLeader() && System.nanoTime() > lastHeartBeat + heartBeatRate + i)) {// 很久没有来自leader的心跳，说明leader卒了，选举开始
-                elect();
+        this.elect = () -> {
+            if (!this.start) {
+                return;
             }
+
+            if (this.nextElectTime > System.nanoTime()) {
+                System.out.println("还剩：" + TimeUnit.NANOSECONDS.toMillis(this.nextElectTime - System.nanoTime()) + "ms开始选举");
+                return; // sleep until it's time to electing
+            }
+
+            // electing start
+            elect();
         };
-        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(elect, 100, heartBeatRate, TimeUnit.MILLISECONDS);// 定期检查leader是不是死掉了
+        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(elect, 0, 300, TimeUnit.MILLISECONDS);
 
-        Runnable heartbeat = () -> {
-            this.writeLock.lock();
-            try {
-                if (!this.start) return;
+        this.heartbeat = () -> {
+            if (!this.start) {
+                return;
+            }
 
-                if (isLeader()) {// 如果自己是主领导，就需要给各个节点发送心跳包
-                    for (NodeAddress address : this.allNodeAddressExcludeMe()) {
-                        if (!address.isAlive()) continue;
+            if (this.nextHeartbeatTime > System.nanoTime()) {
+                return; // sleep until it's time to heartbeat
+            }
 
-                        AppendEntriesResponse response = (AppendEntriesResponse) Client.doRequest(address, new AppendEntriesRequest(Collections.emptyList(), this.address, this.currentTerm, this.lastAppliedTerm, this.lastAppliedIndex.intValue(), this.committedIndex));
-                        log.error("收到从follower:{}的心跳回包:{}", address.getSocketAddress().getPort(), response);
-                    }
+            if (isLeader()) {// 如果自己是主领导，就需要给各个节点发送心跳包
+                for (NodeAddress remote : this.allNodeAddressExcludeMe()) {
+                    if (!remote.isAlive()) continue;
+                    AppendEntriesResponse response = (AppendEntriesResponse) Client.doRequest(remote, new AppendEntriesRequest(Collections.emptyList(), this.address, this.currentTerm, this.lastAppliedTerm, this.lastAppliedIndex.intValue(), this.committedIndex));
+                    log.error("收到follower:{}的心跳回包", remote.getSocketAddress().getPort());
                 }
-            } finally {
-                this.writeLock.unlock();
+                this.nextElectTime = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(this.electRate);
+                this.nextHeartbeatTime = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(this.heartBeatRate);
+                System.out.println("成功给推迟选举");
             }
         };
-        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(heartbeat, 0, this.heartBeatRate, TimeUnit.MILLISECONDS);// 每150ms心跳一下
+        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(this.heartbeat, 150, 100, TimeUnit.MILLISECONDS);
         this.start = true;
     }
 
@@ -118,6 +129,7 @@ public class Node implements Runnable {
         }
 
         log.error("start elect...");
+        long start = System.nanoTime();
         this.writeLock.lock();
         try {
             AtomicInteger ai = new AtomicInteger(1);//先给自己投一票
@@ -126,23 +138,25 @@ public class Node implements Runnable {
             CountDownLatch latch = new CountDownLatch(this.allNodeAddressExcludeMe().size());
             for (NodeAddress addr : this.allNodeAddressExcludeMe()) {
                 Runnable r = () -> {
-                    VoteResponse response = (VoteResponse) Client.doRequest(addr, new VoteRequest(this.address, this.currentTerm + 1, this.logdb.lastLogIndex, this.logdb.lastLogTerm));
-                    if (response != null) {
-                        log.error("收到从:{}的投票回包:{}", addr, response);
-                        if (response.isGrant()) {
-                            ai.addAndGet(1);
-                        } else if (response.getTerm() > this.currentTerm) {
-                            this.role = Role.FOLLOWER;
-                            this.currentTerm = response.getTerm();
-                            fail.set(true);
-                            return;
+                    try {
+                        VoteResponse response = (VoteResponse) Client.doRequest(addr, new VoteRequest(this.address, this.currentTerm + 1, this.logdb.lastLogIndex, this.logdb.lastLogTerm));
+                        if (response != null) {
+                            log.error("收到从:{}的投票回包:{}", addr, response);
+                            if (response.isGrant()) {
+                                ai.addAndGet(1);
+                            } else if (response.getTerm() > this.currentTerm) {
+                                this.role = Role.FOLLOWER;
+                                this.currentTerm = response.getTerm();
+                                fail.set(true);
+                            } else {
+                                log.error("竟然不投票。远端主机为: {}", addr);
+                            }
                         } else {
-                            log.error("竟然不投票。远端主机为: {}", addr);
+                            log.error("可能是挂掉了。远端主机为: {}", addr);
                         }
-                    } else {
-                        log.error("可能是挂掉了。远端主机为: {}", addr);
+                    } finally {
+                        latch.countDown();
                     }
-                    latch.countDown();
                 };
                 ThreadUtil.getThreadPool().execute(r);
             }
@@ -150,17 +164,22 @@ public class Node implements Runnable {
             if (fail.getAcquire()) {
                 return;
             }
-            if (ai.get() > Math.ceil(allNodeAddresses.size() / 2D)) {// 超过半数了，成功了
+            // 0-150ms, 随机一段时间，避免同时选举
+            if (ai.get() > Math.ceil(this.allNodeAddresses.size() / 2D)) {// 超过半数了，成功了
                 log.error("选举成功，选出leader了{}", this.address);
                 this.currentTerm = this.currentTerm + 1;
                 this.leaderAddress = this.address;
                 this.role = Role.LEADER;
+                this.nextHeartbeatTime = -1;// 立即心跳
+                ThreadUtil.getThreadPool().execute(this.heartbeat);
             } else {
                 log.error("elect failed");
             }
+            this.nextElectTime = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(electRate + ThreadLocalRandom.current().nextInt(500, 1000));// 0-150ms, 随机一段时间，避免同时选举
         } catch (InterruptedException e) {
             log.error(e);
         } finally {
+            System.out.println("选举花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + " ms");
             this.writeLock.unlock();
         }
     }
@@ -207,6 +226,10 @@ public class Node implements Runnable {
         HashSet<NodeAddress> nodeAddresses = new HashSet<>(this.allNodeAddresses);
         nodeAddresses.remove(this.address);
         return nodeAddresses;
+    }
+
+    public long delayElect() {
+        return System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(this.electRate + ThreadLocalRandom.current().nextInt(1, 1000));
     }
 
     /*

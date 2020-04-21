@@ -8,6 +8,9 @@ import rpc.model.requestresponse.AppendEntriesRequest;
 import rpc.model.requestresponse.AppendEntriesResponse;
 import rpc.model.requestresponse.Request;
 import rpc.model.requestresponse.Response;
+import util.ThreadUtil;
+
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author naison
@@ -25,7 +28,9 @@ public class AppendEntriesRequestProcessor implements Processor {
     public Response process(Request req, Node node) {
         node.writeLock.lock();
         try {
+            node.nextElectTime = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(node.getElectRate());// push off elect
             AppendEntriesRequest request = (AppendEntriesRequest) req;
+            log.error("收到来自leader:{}的心跳, term:{}", request.getLeaderId().getSocketAddress().getPort(), request.getTerm());
             if (request.getTerm() < node.currentTerm) {
                 return new AppendEntriesResponse(node.currentTerm, false, node.logdb.lastLogIndex);
             } else if (request.getTerm() > node.currentTerm) {
@@ -41,6 +46,8 @@ public class AppendEntriesRequestProcessor implements Processor {
                     node.leaderAddress = null;
                     node.lastVoteFor = null;
                     node.role = Role.FOLLOWER;
+//                    node.nextElectTime = -1;// 立即重新选举
+//                    ThreadUtil.getThreadPool().execute(node.elect);
                 }
                 return new AppendEntriesResponse(request.getTerm() + 1, false, node.logdb.lastLogIndex);
             }

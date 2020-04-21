@@ -162,7 +162,7 @@ public class NIOServer implements Runnable {
         @Override
         public void run() {
             SocketChannel channel = (SocketChannel) key.channel();
-            if (channel != null /*&& channel.isOpen() && channel.isConnected()*/) {
+            if (channel != null) {
                 try {
                     ByteBuffer byteBuffer = ByteBuffer.allocate(1024);
                     int read = channel.read(byteBuffer);

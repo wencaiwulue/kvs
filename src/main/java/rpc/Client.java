@@ -64,6 +64,7 @@ public class Client {
                         remote.alive = false;
                     } catch (IOException e) {
                         log.error(e);
+                        remote.alive = false;
                     }
                 }
             }
@@ -77,11 +78,12 @@ public class Client {
         requestTask.addLast(new SocketRequest(remote, request));
         LockSupport.unpark(sendRequest);
 
+        // optimize
         int m = 1;
-        int t = 8; // 2^8 = 256
+        int t = 20; // 400ms 就超时了
         while (m++ < t) {
-            if (!responseMap.containsKey(request.requestId)) {
-                ThreadUtil.sleep(1 << t);
+            if (!responseMap.containsKey(request.requestId) && remote.isAlive()) {
+                ThreadUtil.sleep(20);
             } else {
                 break;
             }
@@ -128,7 +130,9 @@ public class Client {
                     int read = channel.read(byteBuffer);
                     if (read > 0) {
                         Response response = (Response) FSTUtil.getConf().asObject(byteBuffer.array());
-                        responseMap.put(response.requestId, response);
+                        if (response != null) {
+                            responseMap.put(response.requestId, response);
+                        }
                     } else if (read < 0) {
                         if (key.isValid()) {
                             key.cancel();
@@ -151,10 +155,7 @@ public class Client {
 
         while (true) {
             try {
-                int i = selector.selectNow(action);
-                if (i == 0) {
-                    ThreadUtil.sleep(1);// 忙中偷闲
-                }
+                selector.selectNow(action);
             } catch (IOException e) {
                 e.printStackTrace();
             }

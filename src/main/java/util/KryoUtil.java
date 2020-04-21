@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class KryoUtil { // only use for writing data to disk
     private static final Kryo kryo = new Kryo();
-    private static Input input = new Input(1024 * 10);// 10kb
+    private static final Input input = new Input(1024 * 10);// 10KB
     private static int outputSize = 10;
     private static Output output = new Output(1 << outputSize);
 
