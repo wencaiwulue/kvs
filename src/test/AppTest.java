@@ -5,7 +5,6 @@ import rpc.Client;
 import rpc.model.requestresponse.AddPeerRequest;
 import rpc.model.requestresponse.CURDKVRequest;
 import rpc.model.requestresponse.RemovePeerRequest;
-import rpc.model.requestresponse.Response;
 
 import java.net.InetSocketAddress;
 
