@@ -32,7 +32,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  */
 @Data
 public class Node implements Runnable {
-    private static final Logger log = LogManager.getLogger(Node.class);
+    public static final Logger log = LogManager.getLogger(Node.class);
 
     public volatile boolean start;
 
@@ -46,15 +46,14 @@ public class Node implements Runnable {
     // 参见竞选，然后发送竞选类型的请求，如果半数以上统一，则广播给所有人，
     // leader回一直发送心跳包，如果timeout后还没有发现心跳包来，就说明leader挂了，需要开始选举
 
-    AtomicLong l = new AtomicLong(0);// 用来生成提案编号使用
-    public int committedIndex;
+    public volatile long committedIndex;
     private AtomicLong lastAppliedIndex = new AtomicLong(0);
-    private int lastAppliedTerm = 0;
+    private volatile int lastAppliedTerm = 0;
     public volatile long nextIndex;
 
-    final long heartBeatRate = 500;// the last and this heart beat difference is 150ms, also means if one node lastHeartBeat + heartBeatRate < currentNanoTime, leader dead. should elect leader
-    final long electRate = 2000;// the last and this heart beat difference is 150ms, also means if one node lastHeartBeat + heartBeatRate < currentNanoTime, leader dead. should elect leader
-    public volatile long nextElectTime = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(this.electRate + ThreadLocalRandom.current().nextInt(1000, 2000));// 下次选举时间，总是会因为心跳而推迟，会在因为主leader down后开始选举
+    final long heartBeatRate = 20;// the last and this heart beat difference is 150ms, also means if one node lastHeartBeat + heartBeatRate < currentNanoTime, leader dead. should elect leader
+    final long electRate = 400;// the last and this heart beat difference is 150ms, also means if one node lastHeartBeat + heartBeatRate < currentNanoTime, leader dead. should elect leader
+    public volatile long nextElectTime = this.delayElectTime();// 下次选举时间，总是会因为心跳而推迟，会在因为主leader down后开始选举
     public volatile long nextHeartbeatTime /*= System.nanoTime() + this.heartBeatRate*/;// 下次心跳时间。对leader有用
 
     public volatile int currentTerm = 0;// 第几任leader
@@ -78,7 +77,7 @@ public class Node implements Runnable {
         this.logdb = new LogDB("C:\\Users\\89570\\Documents\\kvs_" + address.getSocketAddress().getPort() + ".log");
         this.nextIndex = this.logdb.lastLogIndex + 1;
         this.processors = Arrays.asList(new AddPeerRequestProcessor(), new RemovePeerRequestProcessor(), new VoteRequestProcessor(), new PowerRequestProcessor());
-        this.KVProcessors = Arrays.asList(new AppendEntriesRequestProcessor(), new ReplicationRequestProcessor(), new CURDProcessor());
+        this.KVProcessors = Arrays.asList(new AppendEntriesRequestProcessor(), new InstallSnapshotRequestProcessor(), new CURDProcessor());
     }
 
     @Override
@@ -89,14 +88,14 @@ public class Node implements Runnable {
             }
 
             if (this.nextElectTime > System.nanoTime()) {
-                System.out.println("还剩：" + TimeUnit.NANOSECONDS.toMillis(this.nextElectTime - System.nanoTime()) + "ms开始选举");
+//                System.out.println("还剩：" + TimeUnit.NANOSECONDS.toMillis(this.nextElectTime - System.nanoTime()) + "ms开始选举");
                 return; // sleep until it's time to electing
             }
 
             // electing start
             elect();
         };
-        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(elect, 0, 300, TimeUnit.MILLISECONDS);
+        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(elect, 0, 10, TimeUnit.MILLISECONDS);
 
         this.heartbeat = () -> {
             if (!this.start) {
@@ -110,15 +109,24 @@ public class Node implements Runnable {
             if (isLeader()) {// 如果自己是主领导，就需要给各个节点发送心跳包
                 for (NodeAddress remote : this.allNodeAddressExcludeMe()) {
                     if (!remote.isAlive()) continue;
-                    AppendEntriesResponse response = (AppendEntriesResponse) Client.doRequest(remote, new AppendEntriesRequest(Collections.emptyList(), this.address, this.currentTerm, this.lastAppliedTerm, this.lastAppliedIndex.intValue(), this.committedIndex));
+                    Response response = Client.doRequest(remote, new AppendEntriesRequest(Collections.emptyList(), this.address, this.currentTerm, this.lastAppliedTerm, this.lastAppliedIndex.intValue(), this.committedIndex));
+
+                    // install snapshot
+                    if (response instanceof ErrorResponse) {
+                        InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) Client.doRequest(remote, new InstallSnapshotRequest(this.address, this.currentTerm, this.db.dbPath));
+                        if (snapshotResponse == null || !snapshotResponse.isSuccess()) {
+                            log.error("Install snapshot error, should retry?");
+                        }
+                    }
+
                     log.error("收到follower:{}的心跳回包", remote.getSocketAddress().getPort());
                 }
-                this.nextElectTime = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(this.electRate);
+                this.nextElectTime = this.delayElectTime();
                 this.nextHeartbeatTime = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(this.heartBeatRate);
-                System.out.println("成功给推迟选举");
+//                System.out.println("成功给推迟选举");
             }
         };
-        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(this.heartbeat, 150, 100, TimeUnit.MILLISECONDS);
+        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(this.heartbeat, 0, 10, TimeUnit.MILLISECONDS);
         this.start = true;
     }
 
@@ -160,7 +168,7 @@ public class Node implements Runnable {
                 };
                 ThreadUtil.getThreadPool().execute(r);
             }
-            latch.await(5, TimeUnit.SECONDS);
+            latch.await(this.electRate, TimeUnit.MILLISECONDS);
             if (fail.getAcquire()) {
                 return;
             }
@@ -175,7 +183,7 @@ public class Node implements Runnable {
             } else {
                 log.error("elect failed");
             }
-            this.nextElectTime = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(electRate + ThreadLocalRandom.current().nextInt(500, 1000));// 0-150ms, 随机一段时间，避免同时选举
+            this.nextElectTime = this.delayElectTime();// 0-150ms, 随机一段时间，避免同时选举
         } catch (InterruptedException e) {
             log.error(e);
         } finally {
@@ -228,8 +236,8 @@ public class Node implements Runnable {
         return nodeAddresses;
     }
 
-    public long delayElect() {
-        return System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(this.electRate + ThreadLocalRandom.current().nextInt(1, 1000));
+    public long delayElectTime() {
+        return System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(this.electRate + ThreadLocalRandom.current().nextInt(100));
     }
 
     /*

@@ -9,8 +9,6 @@ import rpc.model.requestresponse.Response;
 import rpc.model.requestresponse.VoteRequest;
 import rpc.model.requestresponse.VoteResponse;
 
-import java.util.concurrent.TimeUnit;
-
 /**
  * @author naison
  * @since 4/12/2020 17:56
@@ -28,7 +26,6 @@ public class VoteRequestProcessor implements Processor {
     public Response process(Request req, Node node) {
         node.getWriteLock().lock();
         try {
-            node.nextElectTime = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(node.getElectRate());
             VoteRequest request = (VoteRequest) req;
             log.error("收到vote请求.from:{} to {}, vote info:{}", request.getCandidateId().getSocketAddress().getPort(), node.getAddress().getSocketAddress().getPort(), request);
             int i = Long.compare(request.getTerm(), node.currentTerm);

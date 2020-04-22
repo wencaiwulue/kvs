@@ -1,14 +1,18 @@
 package rpc.model.requestresponse;
 
-import lombok.Data;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
  * @author naison
  * @since 4/15/2020 15:40
  */
-@Data
+@Getter
 @NoArgsConstructor
-public class CURDResponse extends Response{
+@AllArgsConstructor
+public class CURDResponse extends Response {
     private static final long serialVersionUID = 9090842719326640223L;
+    public boolean success;
+    public Object value;
 }

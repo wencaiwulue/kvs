@@ -6,6 +6,7 @@ import org.apache.logging.log4j.Logger;
 import raft.LogEntry;
 import raft.Node;
 import raft.NodeAddress;
+import raft.enums.CURDOperation;
 import rpc.Client;
 import rpc.model.requestresponse.*;
 
@@ -29,16 +30,22 @@ public class CURDProcessor implements Processor {
     @SuppressWarnings("NonAtomicOperationOnVolatileField")
     @Override
     public Response process(Request req, Node node) {
+        CURDKVRequest request = (CURDKVRequest) req;
+
+        if (CURDOperation.get.equals(request.getOperation())) { // if it's get operation, get data and return
+            Object val = node.db.get(request.getKey());
+            return new CURDResponse(true, val);
+        }
+
         node.writeLock.lock();
         try {
-            CURDKVRequest request = (CURDKVRequest) req;
             if (!node.isLeader()) {
                 return Client.doRequest(node.leaderAddress, req); // redirect to leader
             }
 
-            List<LogEntry> logEntries = Collections.singletonList(new LogEntry(-1, node.currentTerm, request.getKey(), ((CURDKVRequest) req).getValue()));
+            List<LogEntry> logEntries = Collections.singletonList(new LogEntry(-1, node.currentTerm, request.getOperation(), request.getKey(), request.getValue()));
             for (LogEntry log : logEntries) {
-                log.setIndex(++node.logdb.lastLogIndex);
+                log.index = ++node.logdb.lastLogIndex;
             }
 
             AtomicInteger ai = new AtomicInteger(0);
@@ -57,8 +64,9 @@ public class CURDProcessor implements Processor {
 
             if (ai.get() >= node.allNodeAddresses.size() / 2D) { // more than half peer already write to log
                 StateMachine.apply(logEntries, node);
+                return new CURDResponse(true, request.getValue());
             }
-            return new CURDResponse();
+            return new CURDResponse(false, null);
         } finally {
             node.writeLock.unlock();
         }

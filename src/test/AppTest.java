@@ -1,8 +1,11 @@
 import org.junit.jupiter.api.Test;
 import raft.NodeAddress;
-import rpc.App;
+import raft.enums.CURDOperation;
 import rpc.Client;
 import rpc.model.requestresponse.AddPeerRequest;
+import rpc.model.requestresponse.CURDKVRequest;
+import rpc.model.requestresponse.RemovePeerRequest;
+import rpc.model.requestresponse.Response;
 
 import java.net.InetSocketAddress;
 
@@ -18,19 +21,26 @@ class AppTest {
     private static final InetSocketAddress p8003 = new InetSocketAddress("localhost", 8003);
     private static final InetSocketAddress p8004 = new InetSocketAddress("localhost", 8004);
     private static final NodeAddress p0 = new NodeAddress(true, p8000);
+    private static final NodeAddress p1 = new NodeAddress(true, p8001);
+    private static final NodeAddress p2 = new NodeAddress(true, p8002);
 
     @Test
-    void start() {
-        new App(p8000).start();
-        new App(p8001).start();
-        new App(p8002).start();
-        new App(p8003).start();
+    void addPeer() {
         Client.doRequest(p0, new AddPeerRequest(new NodeAddress(true, p8001)));
-        Client.doRequest(p0, new AddPeerRequest(new NodeAddress(true, p8002)));
-        Client.doRequest(p0, new AddPeerRequest(new NodeAddress(true, p8003)));
+        Client.doRequest(p1, new AddPeerRequest(new NodeAddress(true, p8002)));
     }
 
     @Test
-    void main() {
+    void removePeer() {
+        Client.doRequest(p2, new RemovePeerRequest(new NodeAddress(true, p8000)));
     }
+
+    @Test
+    void curd() {
+        Client.doRequest(p0, new CURDKVRequest(CURDOperation.set, "a", 1));
+        Client.doRequest(p1, new CURDKVRequest(CURDOperation.set, "b", 2));
+
+
+    }
+
 }

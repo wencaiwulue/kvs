@@ -22,6 +22,6 @@ public class AppendEntriesRequest extends Request {
     private NodeAddress leaderId;
     private int term;
     private int prevLogTerm;
-    private int prevLogIndex;
-    private int committedIndex;
+    private long prevLogIndex;
+    private long committedIndex;
 }

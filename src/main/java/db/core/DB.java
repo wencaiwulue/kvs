@@ -45,7 +45,7 @@ public class DB {
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Lock readLock = this.lock.readLock();
     private final Lock writeLock = this.lock.writeLock();
-    private final String dbPath;
+    public final String dbPath;
     private RandomAccessFile raf;
     // 可以判断是否存在kvs中，
     @SuppressWarnings("all")

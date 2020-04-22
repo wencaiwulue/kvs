@@ -1,16 +1,15 @@
 package raft.processor;
 
+import db.core.StateMachine;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import raft.LogEntry;
 import raft.Node;
 import raft.enums.Role;
 import rpc.model.requestresponse.AppendEntriesRequest;
 import rpc.model.requestresponse.AppendEntriesResponse;
 import rpc.model.requestresponse.Request;
 import rpc.model.requestresponse.Response;
-import util.ThreadUtil;
-
-import java.util.concurrent.TimeUnit;
 
 /**
  * @author naison
@@ -28,7 +27,7 @@ public class AppendEntriesRequestProcessor implements Processor {
     public Response process(Request req, Node node) {
         node.writeLock.lock();
         try {
-            node.nextElectTime = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(node.getElectRate());// push off elect
+            node.nextElectTime = node.delayElectTime();// push off elect
             AppendEntriesRequest request = (AppendEntriesRequest) req;
             log.error("收到来自leader:{}的心跳, term:{}", request.getLeaderId().getSocketAddress().getPort(), request.getTerm());
             if (request.getTerm() < node.currentTerm) {
@@ -54,6 +53,21 @@ public class AppendEntriesRequestProcessor implements Processor {
 
             if (!request.getEntries().isEmpty()) { // otherwise it's a heartbeat
                 node.logdb.save(request.getEntries());
+            } else {
+                if (request.getCommittedIndex() > node.committedIndex) {
+                    long size = request.getCommittedIndex() - request.getPrevLogIndex();
+                    if (size < 100) {// 如果有许多的更新，就直接InstallSnapshot
+                        for (long i = 1; i < size + 1; i++) {
+                            LogEntry entry = (LogEntry) node.logdb.get(String.valueOf(request.getPrevLogIndex() + i));
+                            if (entry != null) {
+                                StateMachine.writeToDB(node, entry);
+                            }
+                        }
+                        node.committedIndex = request.getCommittedIndex();
+                    } else {
+                        // install snapshot
+                    }
+                }
             }
             return new AppendEntriesResponse(node.currentTerm, true, node.logdb.lastLogIndex);
         } finally {

@@ -1,16 +1,16 @@
 package rpc.model.requestresponse;
 
 import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 import raft.NodeAddress;
-
-import java.net.InetSocketAddress;
 
 /**
  * @author naison
  * @since 4/12/2020 14:54
  */
-@Data
+@Getter
+@NoArgsConstructor
 @AllArgsConstructor
 public class VoteRequest extends Request {
     private static final long serialVersionUID = -6056301287980072876L;

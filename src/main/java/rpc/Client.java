@@ -80,10 +80,10 @@ public class Client {
 
         // optimize
         int m = 1;
-        int t = 20; // 400ms 就超时了
+        int t = 200; // 400ms 就超时了
         while (m++ < t) {
             if (!responseMap.containsKey(request.requestId) && remote.isAlive()) {
-                ThreadUtil.sleep(20);
+                ThreadUtil.sleep(2);
             } else {
                 break;
             }

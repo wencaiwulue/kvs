@@ -48,9 +48,9 @@ public class RemovePeerRequestProcessor implements Processor {
             }
             PowerResponse response = (PowerResponse) Client.doRequest(request.peer, new PowerRequest(true, true));
             if (response != null && response.isSuccess()) {
-                return new AddPeerResponse();
+                return new RemovePeerResponse();
             } else {
-                return new ErrorResponse("add peer failed, peer info: " + request.peer);
+                return new ErrorResponse("remove peer failed, peer info: " + request.peer);
             }
         }
     }

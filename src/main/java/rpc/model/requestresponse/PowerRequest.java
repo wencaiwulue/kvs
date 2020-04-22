@@ -1,12 +1,14 @@
 package rpc.model.requestresponse;
 
 import lombok.AllArgsConstructor;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
  * @author naison
  * @since 4/16/2020 11:28
  */
+@Getter
 @NoArgsConstructor
 @AllArgsConstructor
 public class PowerRequest extends Request {

@@ -1,14 +1,14 @@
 package rpc.model.requestresponse;
 
 import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
  * @author naison
  * @since 4/12/2020 14:54
  */
-@Data
+@Getter
 @AllArgsConstructor
 @NoArgsConstructor
 public class VoteResponse extends Response {

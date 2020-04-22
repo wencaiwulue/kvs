@@ -3,8 +3,6 @@ package rpc;
 
 import raft.Node;
 import raft.NodeAddress;
-import rpc.model.requestresponse.AddPeerRequest;
-import rpc.model.requestresponse.Response;
 import util.ThreadUtil;
 
 import java.net.InetSocketAddress;
@@ -40,16 +38,9 @@ public class App {
     }
 
     public static void main(String[] args) {
-        InetSocketAddress p8000 = new InetSocketAddress("localhost", 8000);
-        InetSocketAddress p8001 = new InetSocketAddress("localhost", 8001);
-        InetSocketAddress p8002 = new InetSocketAddress("localhost", 8002);
         int port = Integer.parseInt(args[0]);
         InetSocketAddress follower = new InetSocketAddress("localhost", port);
         new App(follower).start();
-        if (port != 8000) {
-            Response response = Client.doRequest(new NodeAddress(true, p8000), new AddPeerRequest(new NodeAddress(true, follower)));
-            System.out.println(response);
-        }
     }
 
 }
