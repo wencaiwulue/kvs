@@ -12,6 +12,5 @@ public interface Processor {
 
     boolean supports(Request req);
 
-    // 这里要不要改成 Response process(Request req, Node node)??
     Response process(Request req, Node node);
 }
