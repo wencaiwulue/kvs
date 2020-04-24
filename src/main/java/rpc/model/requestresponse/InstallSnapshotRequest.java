@@ -18,4 +18,5 @@ public class InstallSnapshotRequest extends Request {
     public NodeAddress leader;
     public int term;
     public String filename;
+    public long fileSize;
 }

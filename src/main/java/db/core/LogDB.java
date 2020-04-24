@@ -47,7 +47,7 @@ public class LogDB {
     private final Lock writeLock = this.lock.writeLock();
 
     public final String logDBPath;
-    private RandomAccessFile raf;
+    public RandomAccessFile raf;
 
     public LogDB(String logDBPath) {
         this.map = new ConcurrentHashMap<>(/*1 << 30*/); // 这是hashMap的容量

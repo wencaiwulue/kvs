@@ -6,12 +6,13 @@ import lombok.NoArgsConstructor;
 
 /**
  * @author naison
- * @since 4/14/2020 10:52
+ * @since 4/22/2020 17:35
  */
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
-public class InstallSnapshotResponse extends Response {
-    private static final long serialVersionUID = 4562785019544269943L;
+public class DownloadFileResponse extends Response {
+    private static final long serialVersionUID = -7166579237357118025L;
     public boolean success;
+    public byte[] bytes;
 }

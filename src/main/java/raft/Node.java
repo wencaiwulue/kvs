@@ -76,7 +76,7 @@ public class Node implements Runnable {
         this.db = new DB("C:\\Users\\89570\\Documents\\kvs_" + address.getSocketAddress().getPort() + ".db");
         this.logdb = new LogDB("C:\\Users\\89570\\Documents\\kvs_" + address.getSocketAddress().getPort() + ".log");
         this.nextIndex = this.logdb.lastLogIndex + 1;
-        this.processors = Arrays.asList(new AddPeerRequestProcessor(), new RemovePeerRequestProcessor(), new VoteRequestProcessor(), new PowerRequestProcessor());
+        this.processors = Arrays.asList(new AddPeerRequestProcessor(), new RemovePeerRequestProcessor(), new VoteRequestProcessor(), new PowerRequestProcessor(), new DownloadFileRequestProcessor());
         this.KVProcessors = Arrays.asList(new AppendEntriesRequestProcessor(), new InstallSnapshotRequestProcessor(), new CURDProcessor());
     }
 
@@ -113,7 +113,15 @@ public class Node implements Runnable {
 
                     // install snapshot
                     if (response instanceof ErrorResponse) {
-                        InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) Client.doRequest(remote, new InstallSnapshotRequest(this.address, this.currentTerm, this.logdb.logDBPath));
+                        long size = 0;
+                        try {
+                            size = this.logdb.raf.getChannel().size();
+                        } catch (ClosedChannelException e) {
+                            log.error("who close the channel !!");
+                        } catch (IOException e) {
+                            log.error(e);
+                        }
+                        InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) Client.doRequest(remote, new InstallSnapshotRequest(this.address, this.currentTerm, this.logdb.logDBPath, size));
                         if (snapshotResponse == null || !snapshotResponse.isSuccess()) {
                             log.error("Install snapshot error, should retry?");
                         }

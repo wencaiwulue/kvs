@@ -13,7 +13,6 @@ import java.net.InetSocketAddress;
  * @since 4/12/2020 16:10
  */
 class AppTest {
-
     private static final InetSocketAddress p8000 = new InetSocketAddress("localhost", 8000);
     private static final InetSocketAddress p8001 = new InetSocketAddress("localhost", 8001);
     private static final InetSocketAddress p8002 = new InetSocketAddress("localhost", 8002);
@@ -26,7 +25,7 @@ class AppTest {
     @Test
     void addPeer() {
         Client.doRequest(p0, new AddPeerRequest(new NodeAddress(true, p8001)));
-        Client.doRequest(p1, new AddPeerRequest(new NodeAddress(true, p8002)));
+//        Client.doRequest(p1, new AddPeerRequest(new NodeAddress(true, p8002)));
     }
 
     @Test
@@ -38,8 +37,6 @@ class AppTest {
     void curd() {
         Client.doRequest(p0, new CURDKVRequest(CURDOperation.set, "a", 1));
         Client.doRequest(p1, new CURDKVRequest(CURDOperation.set, "b", 2));
-
-
     }
 
 }

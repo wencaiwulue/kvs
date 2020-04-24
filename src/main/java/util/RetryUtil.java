@@ -1,6 +1,9 @@
 package util;
 
+import rpc.model.requestresponse.Response;
+
 import java.util.concurrent.*;
+import java.util.function.Function;
 
 /**
  * @author naison
@@ -28,5 +31,21 @@ public class RetryUtil {
             e.printStackTrace();
             return null;
         }
+    }
+
+    public static Response retryWithResultChecker(Callable<Response> c, Function<Response, Boolean> checker, int retry) {
+        int i = Math.max(1, retry);
+        int t = 0;
+        while (t++ < i) {
+            try {
+                Response call = c.call();
+                Boolean apply = checker.apply(call);
+                if (apply) {
+                    return call;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return null;
     }
 }

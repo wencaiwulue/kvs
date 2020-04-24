@@ -32,7 +32,7 @@ public class BackupUtil {
      * -------------------------------------------------------------------------
      * 固定的8个byte的头，用于存储实际使用大小
      * */
-    public static synchronized void snapshotToDisk(ConcurrentHashMap<String, Object> map, RandomAccessFile raf) {
+    public static synchronized void snapshotToDisk(Map<String, Object> map, RandomAccessFile raf) {
         if (map.isEmpty() || raf == null) return;
 
         try {
@@ -106,7 +106,7 @@ public class BackupUtil {
         }
     }
 
-    public static synchronized void readFromDisk(ConcurrentHashMap<String, Object> map, RandomAccessFile raf) {
+    public static synchronized void readFromDisk(Map<String, Object> map, RandomAccessFile raf) {
         if (raf == null) return;
 
         try {
