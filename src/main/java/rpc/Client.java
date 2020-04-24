@@ -82,7 +82,7 @@ public class Client {
         int m = 1;
         int t = 200; // 400ms 就超时了
         while (m++ < t) {
-            if (!responseMap.containsKey(request.requestId) && remote.isAlive()) {
+            if (!responseMap.containsKey(request.requestId) && remote.alive) {
                 ThreadUtil.sleep(2);
             } else {
                 break;

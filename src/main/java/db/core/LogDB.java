@@ -46,7 +46,7 @@ public class LogDB {
     private final Lock readLock = this.lock.readLock();
     private final Lock writeLock = this.lock.writeLock();
 
-    private final String logDBPath;
+    public final String logDBPath;
     private RandomAccessFile raf;
 
     public LogDB(String logDBPath) {

@@ -6,10 +6,7 @@ import org.apache.logging.log4j.Logger;
 import raft.LogEntry;
 import raft.Node;
 import raft.enums.Role;
-import rpc.model.requestresponse.AppendEntriesRequest;
-import rpc.model.requestresponse.AppendEntriesResponse;
-import rpc.model.requestresponse.Request;
-import rpc.model.requestresponse.Response;
+import rpc.model.requestresponse.*;
 
 /**
  * @author naison
@@ -60,12 +57,13 @@ public class AppendEntriesRequestProcessor implements Processor {
                         for (long i = 1; i < size + 1; i++) {
                             LogEntry entry = (LogEntry) node.logdb.get(String.valueOf(request.getPrevLogIndex() + i));
                             if (entry != null) {
-                                StateMachine.writeToDB(node, entry);
+                                StateMachine.writeLogToDB(node, entry);
                             }
                         }
                         node.committedIndex = request.getCommittedIndex();
                     } else {
                         // install snapshot
+                        return new ErrorResponse();
                     }
                 }
             }

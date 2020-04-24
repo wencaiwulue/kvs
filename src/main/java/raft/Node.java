@@ -42,9 +42,6 @@ public class Node implements Runnable {
     public DB db;
     public LogDB logdb;
     public Role role = Role.FOLLOWER;// 默认是follower角色
-    long timeout = 1000;//150ms -- 300ms randomized  超时时间,选举的时候，如果主节点挂了，则所有的节点开始timeout，然后最先timeout结束的节点变为candidate，
-    // 参见竞选，然后发送竞选类型的请求，如果半数以上统一，则广播给所有人，
-    // leader回一直发送心跳包，如果timeout后还没有发现心跳包来，就说明leader挂了，需要开始选举
 
     public volatile long committedIndex;
     private AtomicLong lastAppliedIndex = new AtomicLong(0);
@@ -55,6 +52,9 @@ public class Node implements Runnable {
     final long electRate = 400;// the last and this heart beat difference is 150ms, also means if one node lastHeartBeat + heartBeatRate < currentNanoTime, leader dead. should elect leader
     public volatile long nextElectTime = this.delayElectTime();// 下次选举时间，总是会因为心跳而推迟，会在因为主leader down后开始选举
     public volatile long nextHeartbeatTime /*= System.nanoTime() + this.heartBeatRate*/;// 下次心跳时间。对leader有用
+    //150ms -- 300ms randomized  超时时间,选举的时候，如果主节点挂了，则所有的节点开始timeout，然后最先timeout结束的节点变为candidate，
+    // 参见竞选，然后发送竞选类型的请求，如果半数以上统一，则广播给所有人，
+    // leader回一直发送心跳包，如果timeout后还没有发现心跳包来，就说明leader挂了，需要开始选举
 
     public volatile int currentTerm = 0;// 第几任leader
     public volatile NodeAddress lastVoteFor;// 判断当前选举是否已经投票
@@ -108,12 +108,12 @@ public class Node implements Runnable {
 
             if (isLeader()) {// 如果自己是主领导，就需要给各个节点发送心跳包
                 for (NodeAddress remote : this.allNodeAddressExcludeMe()) {
-                    if (!remote.isAlive()) continue;
+                    if (!remote.alive) continue;
                     Response response = Client.doRequest(remote, new AppendEntriesRequest(Collections.emptyList(), this.address, this.currentTerm, this.lastAppliedTerm, this.lastAppliedIndex.intValue(), this.committedIndex));
 
                     // install snapshot
                     if (response instanceof ErrorResponse) {
-                        InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) Client.doRequest(remote, new InstallSnapshotRequest(this.address, this.currentTerm, this.db.dbPath));
+                        InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) Client.doRequest(remote, new InstallSnapshotRequest(this.address, this.currentTerm, this.logdb.logDBPath));
                         if (snapshotResponse == null || !snapshotResponse.isSuccess()) {
                             log.error("Install snapshot error, should retry?");
                         }

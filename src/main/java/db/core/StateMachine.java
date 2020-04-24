@@ -17,11 +17,11 @@ import java.util.concurrent.TimeUnit;
 public class StateMachine {
 
     /*
-     * 发送心跳包，告诉follower apply log
+     * 发送心跳包，告诉 follower apply log
      * */
     public static void apply(List<LogEntry> entries, Node leader) {
         for (LogEntry entry : entries) {
-            writeToDB(leader, entry);
+            writeLogToDB(leader, entry);
         }
         leader.committedIndex = entries.get(entries.size() - 1).index;
 
@@ -31,7 +31,7 @@ public class StateMachine {
         }
     }
 
-    public static void writeToDB(Node leader, LogEntry entry) {
+    public static void writeLogToDB(Node leader, LogEntry entry) {
         switch (entry.getOperation()) {
             case set: {
                 leader.db.set(entry.getKey(), entry.getValue());

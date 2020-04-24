@@ -17,7 +17,8 @@ import java.util.Objects;
 @AllArgsConstructor
 public class NodeAddress implements Serializable {
     private static final long serialVersionUID = 3723897904539137708L;
-    public boolean alive; // host status
+
+    public volatile boolean alive; // host status
     private InetSocketAddress socketAddress;
 
     @Override
