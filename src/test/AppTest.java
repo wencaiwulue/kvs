@@ -25,7 +25,7 @@ class AppTest {
     @Test
     void addPeer() {
         Client.doRequest(p0, new AddPeerRequest(new NodeAddress(true, p8001)));
-//        Client.doRequest(p1, new AddPeerRequest(new NodeAddress(true, p8002)));
+        Client.doRequest(p1, new AddPeerRequest(new NodeAddress(true, p8002)));
     }
 
     @Test
