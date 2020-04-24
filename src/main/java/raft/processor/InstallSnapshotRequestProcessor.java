@@ -36,7 +36,6 @@ public class InstallSnapshotRequestProcessor implements Processor {
     }
 
     @Override
-    @SuppressWarnings("ResultIsIgnored")
     public Response process(Request req, Node node) {
         // copy file, apply
         InstallSnapshotRequest request = (InstallSnapshotRequest) req;
@@ -57,7 +56,7 @@ public class InstallSnapshotRequestProcessor implements Processor {
         int times = (int) Math.ceil(request.fileSize / 4096D);
         int p = 0;
         int offset = 0;
-        int length = 4096;
+        int length = 1024 * 10 * 10; // 10MB
         do {
             int finalOffset = offset;
             Callable<Response> c = () -> Client.doRequest(request.leader, new DownloadFileRequest(request.filename, finalOffset, length));
