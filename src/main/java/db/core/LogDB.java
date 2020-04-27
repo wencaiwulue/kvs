@@ -1,9 +1,13 @@
 package db.core;
 
+import com.google.common.collect.Range;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import raft.LogEntry;
-import util.*;
+import util.BackupUtil;
+import util.ByteArrayUtil;
+import util.KryoUtil;
+import util.ThreadUtil;
 
 import java.io.File;
 import java.io.IOException;
@@ -28,11 +32,12 @@ public class LogDB {
     private static final Logger log = LogManager.getLogger(LogDB.class);
 
     private final int size = 1000 * 1000;// 缓冲区大小
-    private final int thresholdStart = (int) (size * 0.8);// 如果超过这个阈值，就启动备份写入流程
-    private final int thresholdStop = (int) (size * 0.2); // 低于这个值就停止写入，因为管道是不停写入的，所以基本不会出现管道为空的情况
+    // 如果超过这个阈值，就启动备份写入流程
+    // 低于这个值就停止写入，因为管道是不停写入的，所以基本不会出现管道为空的情况
+    private final Range<Integer> threshold = Range.openClosed((int) (size * 0.2), (int) (size * 0.8));
     private final ArrayDeque<byte[]> buffer = new ArrayDeque<>(size);// 这里是缓冲区，也就是每隔一段时间备份append的数据，或者这个buffer满了就备份数据
 
-    private final byte mode = 2; // 备份方式为增量还是快照，或者是混合模式, 0--append, 1--snapshot, 2--append+snapshot
+    private final byte mode; // 备份方式为增量还是快照，或者是混合模式, 0--append, 1--snapshot, 2--append+snapshot
     private volatile long lastAppendBackupTime;
     private final long appendRate = 1000 * 1000; // 每一秒append一次
     private volatile long lastSnapshotBackupTime;
@@ -52,83 +57,84 @@ public class LogDB {
     public LogDB(String logDBPath) {
         this.map = new ConcurrentHashMap<>(/*1 << 30*/); // 这是hashMap的容量
         this.logDBPath = logDBPath;
+        this.mode = 2;
         initAndReadIntoMemory();
         writeDataToDisk();
     }
 
     @SuppressWarnings("all")
     public void initAndReadIntoMemory() {
-        writeLock.lock();
+        this.writeLock.lock();
         try {
-            if (raf == null) {
-                File f = new File(logDBPath);
+            if (this.raf == null) {
+                File f = new File(this.logDBPath);
                 if (!f.exists()) f.createNewFile();
-                raf = new RandomAccessFile(f, "rw");
+                this.raf = new RandomAccessFile(f, "rw");
             }
-            BackupUtil.readFromDisk(map, raf);
+            BackupUtil.readFromDisk(this.map, this.raf);
         } catch (IOException e) {
             log.error(e);
         } finally {
-            writeLock.unlock();
+            this.writeLock.unlock();
         }
     }
 
-    private void writeDataToDisk() {
+    public void writeDataToDisk() {
         Runnable backup = () -> {
-            int size = buffer.size();
-            if (mode == 0 || mode == 2) {
-                if (size > thresholdStart || lastAppendBackupTime + appendRate < System.nanoTime()) {
-                    writeLock.lock();
+            int size = this.buffer.size();
+            if (this.mode == 0 || this.mode == 2) {
+                if (size > this.threshold.upperEndpoint() || this.lastAppendBackupTime + this.appendRate < System.nanoTime()) {
+                    this.writeLock.lock();
                     try {
-//                        BackupUtil.appendToDisk(buffer, size - thresholdStop, raf);
+                        BackupUtil.appendToDisk(this.buffer, size - this.threshold.lowerEndpoint(), this.raf);
                     } finally {
-                        writeLock.unlock();
+                        this.writeLock.unlock();
                     }
-                    lastAppendBackupTime = System.nanoTime();
+                    this.lastAppendBackupTime = System.nanoTime();
                 }
             }
 
-            if (mode == 1 || mode == 2) {
-                if (lastSnapshotBackupTime + snapshotRate < System.nanoTime()) {
-                    lock.writeLock().lock();
+            if (this.mode == 1 || this.mode == 2) {
+                if (this.lastSnapshotBackupTime + this.snapshotRate < System.nanoTime()) {
+                    this.lock.writeLock().lock();
                     try {
-//                        BackupUtil.snapshotToDisk(map, raf);
+                        BackupUtil.snapshotToDisk(this.map, this.raf);
                     } finally {
-                        lock.writeLock().unlock();
+                        this.lock.writeLock().unlock();
                     }
-                    lastSnapshotBackupTime = System.nanoTime();
+                    this.lastSnapshotBackupTime = System.nanoTime();
                 }
             }
         };
-        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(backup, 0, appendRate / 2, TimeUnit.NANOSECONDS);// 没半秒检查一次
+        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(backup, 0, this.appendRate / 2, TimeUnit.NANOSECONDS);// 没半秒检查一次
     }
 
     public Object get(String key) {
-        return map.get(key);
+        return this.map.get(key);
     }
 
     public void save(List<LogEntry> logs) {
-        save(logs, false);
+        this.save(logs, false);
     }
 
     public void save(List<LogEntry> logs, boolean flush) {
         for (LogEntry entry : logs) {
-            set(String.valueOf(entry.getIndex()), entry);
+            this.set(String.valueOf(entry.getIndex()), entry);
         }
         if (flush) {
-            writeDataToDisk();
+            this.writeDataToDisk();
         }
     }
 
     public void set(String key, Object value) {
         if (key == null) return;
-        map.put(key, value);
+        this.map.put(key, value);
         byte[] kb = key.getBytes();
         byte[] vb = KryoUtil.asByteArray(value);
-        buffer.push(ByteArrayUtil.combineKeyVal(kb, vb));
+        this.buffer.push(ByteArrayUtil.combineKeyVal(kb, vb));
     }
 
     public void remove(String key) {
-        map.remove(key);
+        this.map.remove(key);
     }
 }
