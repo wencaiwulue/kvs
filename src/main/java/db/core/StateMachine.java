@@ -1,11 +1,13 @@
 package db.core;
 
+import db.operationservice.*;
 import raft.LogEntry;
 import raft.Node;
 import raft.NodeAddress;
 import rpc.Client;
 import rpc.model.requestresponse.AppendEntriesRequest;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -15,6 +17,8 @@ import java.util.concurrent.TimeUnit;
  * @since 4/15/2020 15:18
  */
 public class StateMachine {
+
+    public static List<Service> services = Arrays.asList(new ExpireOperationService(), new GetOperationService(), new RemoveOperationService(), new SetOperationService());
 
     /*
      * 发送心跳包，告诉 follower apply log
@@ -31,23 +35,17 @@ public class StateMachine {
         }
     }
 
+    // use strategy mode
     public static void writeLogToDB(Node leader, LogEntry entry) {
-        switch (entry.getOperation()) {
-            case set: {
-                leader.db.set(entry.getKey(), entry.getValue());
-                break;
+
+        for (Service service : services) {
+            if (service.support(entry.getOperation())) {
+                service.service(leader, entry);
+                return;
             }
-            case remove: {
-                leader.db.remove(entry.getKey());
-                break;
-            }
-            case expire: {
-                leader.db.expireKey(entry.getKey(), (int) entry.getValue(), TimeUnit.MILLISECONDS);
-                break;
-            }
-            default:
-                Node.log.error("Operation:" + entry.getOperation() + " is not support.");
-                throw new UnsupportedOperationException("Operation:" + entry.getOperation() + " is not support.");
         }
+
+        Node.log.error("Operation:" + entry.getOperation() + " is not support.");
+        throw new UnsupportedOperationException("Operation:" + entry.getOperation() + " is not support.");
     }
 }

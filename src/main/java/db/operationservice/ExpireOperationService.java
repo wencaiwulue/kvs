@@ -1,0 +1,24 @@
+package db.operationservice;
+
+import raft.LogEntry;
+import raft.Node;
+import raft.enums.CURDOperation;
+
+import java.util.concurrent.TimeUnit;
+
+/**
+ * @author naison
+ * @since 4/27/2020 14:06
+ */
+public class ExpireOperationService implements Service {
+    @Override
+    public boolean support(CURDOperation operation) {
+        return CURDOperation.expire.equals(operation);
+    }
+
+    @Override
+    public boolean service(Node node, LogEntry logEntry) {
+        node.db.expireKey(logEntry.getKey(), (int) logEntry.getValue(), TimeUnit.MILLISECONDS);
+        return false;
+    }
+}
