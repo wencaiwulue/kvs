@@ -70,25 +70,33 @@ public class BackupUtil {
     public static synchronized void appendToDisk(ArrayDeque<byte[]> pipeline, int size, RandomAccessFile raf) {
         if (raf == null || pipeline.isEmpty()) return;
 
+        long p = 8L;// 固定的8byte文件头
         try {
-            long p = 8L;// 固定的8byte文件头
-            try {
-                raf.seek(0);
-                p = raf.readLong();
-            } catch (IOException ignored) {
-            }
-            FileChannel channel = raf.getChannel();
-            MappedByteBuffer mapped = channel.map(FileChannel.MapMode.READ_WRITE, p, Integer.MAX_VALUE);
-            int length = 0;// 本次写入的量
-            for (int i = 0; i < size; i++) {
-                byte[] bytes = pipeline.pollLast();
-                if (bytes != null) {
-                    mapped.put(bytes);
-                    length += bytes.length;
-                }
-            }
-            mapped.force();
+            raf.seek(0);
+            p = raf.readLong();
+        } catch (IOException ignored) {
+        }
+        FileChannel channel = raf.getChannel();
+        MappedByteBuffer mapped = null;
+        try {
+            mapped = channel.map(FileChannel.MapMode.READ_WRITE, p, Integer.MAX_VALUE);
+        } catch (IOException e) {
+            e.printStackTrace();
+            log.error(e);
+        }
+        if (mapped == null) return;
 
+        int length = 0;// 本次写入的量
+        for (int i = 0; i < size; i++) {
+            byte[] bytes = pipeline.pollLast();
+            if (bytes != null) {
+                mapped.put(bytes);
+                length += bytes.length;
+            }
+        }
+        mapped.force();
+
+        try {
             raf.seek(0);
             raf.writeLong(p + length);// 更新头的长度
         } catch (IOException e) {
@@ -109,60 +117,65 @@ public class BackupUtil {
     public static synchronized void readFromDisk(Map<String, Object> map, RandomAccessFile raf) {
         if (raf == null) return;
 
+        long p = 8L;// 固定的8byte文件头
         try {
-            long p = 8L;// 固定的8byte文件头
+            raf.seek(0);
+            p = raf.readLong();
+        } catch (IOException ignored) {
+        }
+        FileChannel channel = raf.getChannel();
+
+        int m = Integer.MAX_VALUE >> 6;// 裁剪的大小
+
+        int t = (int) Math.ceil((double) (p - 8) / m);// 经测试貌似有点儿慢
+
+        long len = 0;
+        long d = 0;
+
+        byte[] bytes = new byte[1024];
+        for (int i = 0; i < t; i++) {// 裁剪的部位刚好是一个byte[]的中间，而不是一个与另一个byte[]之间的空隙
+            long position = 8 + m * i - d;
+            long size = (m * (i + 1) > p - 8) ? p - 8 : m * (i + 1);
+            MappedByteBuffer mapped = null;// 跳过头位置
             try {
-                raf.seek(0);
-                p = raf.readLong();
-            } catch (IOException ignored) {
+                mapped = channel.map(FileChannel.MapMode.READ_WRITE, position, size);
+            } catch (IOException e) {
+                e.printStackTrace();
+                log.error(e);
             }
-            FileChannel channel = raf.getChannel();
+            if (mapped == null) return;
 
-            int m = Integer.MAX_VALUE >> 6;// 裁剪的大小
-
-            int t = (int) Math.ceil((double) (p - 8) / m);// 经测试貌似有点儿慢
-
-            long len = 0;
-            long d = 0;
-
-            byte[] bytes = new byte[1024];
-            for (int i = 0; i < t; i++) {// 裁剪的部位刚好是一个byte[]的中间，而不是一个与另一个byte[]之间的空隙
-                long position = 8 + m * i - d;
-                long size = (m * (i + 1) > p - 8) ? p - 8 : m * (i + 1);
-                MappedByteBuffer mapped = channel.map(FileChannel.MapMode.READ_WRITE, position, size);// 跳过头位置
-                int a = 0, b = 0, c = 0;
-                d = 0;
-                len = 0;
-                while (mapped.hasRemaining() /*&& mapped.remaining() >= 1024 * 10*/) {
-                    len += a + b + c * 2;
-                    try {
-                        int kLen = mapped.getInt();
-                        if (kLen > bytes.length) {
-                            bytes = new byte[kLen];
-                        }
-                        mapped.get(bytes, 0, kLen);
-                        String key = new String(bytes, 0, kLen);
-                        int valLen = mapped.getInt();
-                        if (valLen > bytes.length) {
-                            bytes = new byte[valLen];
-                        }
-                        mapped.get(bytes, 0, valLen);
-                        Object value = KryoUtil.asObject(bytes, 0, valLen);
-                        map.put(key, value);
-                        a = kLen;
-                        b = valLen;
-                        c = 4;
-                    } catch (BufferUnderflowException | IndexOutOfBoundsException | KryoException e) {
-                        d = size - len;
-                        break;
+            int a = 0, b = 0, c = 0;
+            d = 0;
+            len = 0;
+            while (mapped.hasRemaining() /*&& mapped.remaining() >= 1024 * 10*/) {
+                len += a + b + c * 2;
+                try {
+                    int kLen = mapped.getInt();
+                    if (kLen > bytes.length) {
+                        bytes = new byte[kLen];
                     }
+                    mapped.get(bytes, 0, kLen);
+                    String key = new String(bytes, 0, kLen);
+                    int valLen = mapped.getInt();
+                    if (valLen > bytes.length) {
+                        bytes = new byte[valLen];
+                    }
+                    mapped.get(bytes, 0, valLen);
+                    Object value = KryoUtil.asObject(bytes, 0, valLen);
+                    map.put(key, value);
+                    a = kLen;
+                    b = valLen;
+                    c = 4;
+                } catch (BufferUnderflowException | IndexOutOfBoundsException | KryoException e) {
+                    d = size - len;
+                    break;
                 }
             }
-        } catch (IOException e) {
-            log.error(e);
         }
     }
 
+    @SuppressWarnings("ResultOfMethodCallIgnored")
     public static void main(String[] args) throws IOException {
         String path = "C:\\Users\\89570\\Documents\\test3.txt";
         File f = new File(path);

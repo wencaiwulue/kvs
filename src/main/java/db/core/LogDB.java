@@ -37,13 +37,10 @@ public class LogDB {
     private final Range<Integer> threshold = Range.openClosed((int) (size * 0.2), (int) (size * 0.8));
     private final ArrayDeque<byte[]> buffer = new ArrayDeque<>(size);// 这里是缓冲区，也就是每隔一段时间备份append的数据，或者这个buffer满了就备份数据
 
-    private final byte mode; // 备份方式为增量还是快照，或者是混合模式, 0--append, 1--snapshot, 2--append+snapshot
     private volatile long lastAppendBackupTime;
     private final long appendRate = 1000 * 1000; // 每一秒append一次
-    private volatile long lastSnapshotBackupTime;
-    private final long snapshotRate = 60 * appendRate; // 每一分钟snapshot一下
 
-    private final ConcurrentHashMap<String, Object> map;// RockDB or LevelDB?
+    private final ConcurrentHashMap<String, Object> map;
     public volatile int lastLogIndex;
     public volatile int lastLogTerm;
 
@@ -57,12 +54,11 @@ public class LogDB {
     public LogDB(String logDBPath) {
         this.map = new ConcurrentHashMap<>(/*1 << 30*/); // 这是hashMap的容量
         this.logDBPath = logDBPath;
-        this.mode = 2;
         initAndReadIntoMemory();
         writeDataToDisk();
     }
 
-    @SuppressWarnings("all")
+    @SuppressWarnings("ResultOfMethodCallIgnored")
     public void initAndReadIntoMemory() {
         this.writeLock.lock();
         try {
@@ -82,28 +78,14 @@ public class LogDB {
     public void writeDataToDisk() {
         Runnable backup = () -> {
             int size = this.buffer.size();
-            if (this.mode == 0 || this.mode == 2) {
-                if (size > this.threshold.upperEndpoint() || this.lastAppendBackupTime + this.appendRate < System.nanoTime()) {
-                    this.writeLock.lock();
-                    try {
-                        BackupUtil.appendToDisk(this.buffer, size - this.threshold.lowerEndpoint(), this.raf);
-                    } finally {
-                        this.writeLock.unlock();
-                    }
-                    this.lastAppendBackupTime = System.nanoTime();
+            if (size > this.threshold.upperEndpoint() || this.lastAppendBackupTime + this.appendRate < System.nanoTime()) {
+                this.writeLock.lock();
+                try {
+                    BackupUtil.appendToDisk(this.buffer, size - this.threshold.lowerEndpoint(), this.raf);
+                } finally {
+                    this.writeLock.unlock();
                 }
-            }
-
-            if (this.mode == 1 || this.mode == 2) {
-                if (this.lastSnapshotBackupTime + this.snapshotRate < System.nanoTime()) {
-                    this.lock.writeLock().lock();
-                    try {
-                        BackupUtil.snapshotToDisk(this.map, this.raf);
-                    } finally {
-                        this.lock.writeLock().unlock();
-                    }
-                    this.lastSnapshotBackupTime = System.nanoTime();
-                }
+                this.lastAppendBackupTime = System.nanoTime();
             }
         };
         ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(backup, 0, this.appendRate / 2, TimeUnit.NANOSECONDS);// 没半秒检查一次

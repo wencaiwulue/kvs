@@ -53,8 +53,8 @@ public class DB {
     public final String dbPath;
     private RandomAccessFile raf;
     // 可以判断是否存在kvs中，
-    @SuppressWarnings("all")
-    private static BloomFilter<String> filter = BloomFilter.create(Funnels.stringFunnel(StandardCharsets.UTF_8), Integer.MAX_VALUE);
+    @SuppressWarnings("UnstableApiUsage")
+    private static final BloomFilter<String> filter = BloomFilter.create(Funnels.stringFunnel(StandardCharsets.UTF_8), Integer.MAX_VALUE);
 
     public DB(String dbPath) {
         this.map = new ConcurrentHashMap<>(/*1 << 30*/); // 这是hashMap的容量
@@ -66,7 +66,7 @@ public class DB {
         writeDataToDisk();
     }
 
-    @SuppressWarnings("all")
+    @SuppressWarnings("ResultOfMethodCallIgnored")
     public void initAndReadIntoMemory() {
         this.writeLock.lock();
         try {
