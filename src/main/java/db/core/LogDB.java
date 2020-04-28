@@ -1,24 +1,27 @@
 package db.core;
 
-import com.google.common.collect.Range;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import raft.LogEntry;
 import util.BackupUtil;
-import util.ByteArrayUtil;
 import util.KryoUtil;
-import util.ThreadUtil;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.RandomAccessFile;
-import java.util.ArrayDeque;
+import java.nio.MappedByteBuffer;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.stream.Collectors;
+
+import static util.BackupUtil.write;
 
 /**
  * 设计目标（每秒）
@@ -31,15 +34,6 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class LogDB {
     private static final Logger log = LogManager.getLogger(LogDB.class);
 
-    private final int size = 1000 * 1000;// 缓冲区大小
-    // 如果超过这个阈值，就启动备份写入流程
-    // 低于这个值就停止写入，因为管道是不停写入的，所以基本不会出现管道为空的情况
-    private final Range<Integer> threshold = Range.openClosed((int) (size * 0.2), (int) (size * 0.8));
-    private final ArrayDeque<byte[]> buffer = new ArrayDeque<>(size);// 这里是缓冲区，也就是每隔一段时间备份append的数据，或者这个buffer满了就备份数据
-
-    private volatile long lastAppendBackupTime;
-    private final long appendRate = 1000 * 1000; // 每一秒append一次
-
     private final ConcurrentHashMap<String, Object> map;
     public volatile int lastLogIndex;
     public volatile int lastLogTerm;
@@ -48,26 +42,41 @@ public class LogDB {
     private final Lock readLock = this.lock.readLock();
     private final Lock writeLock = this.lock.writeLock();
 
-    public final String logDBPath;
-    public RandomAccessFile raf;
+    public final Path logDBPath;
+    public List<File> file;
+    private final AtomicReference<MappedByteBuffer> haveFreeSpaceFile = new AtomicReference<>();
+    private final AtomicInteger number = new AtomicInteger(0);
 
     public LogDB(String logDBPath) {
         this.map = new ConcurrentHashMap<>(/*1 << 30*/); // 这是hashMap的容量
-        this.logDBPath = logDBPath;
+        this.logDBPath = Path.of(logDBPath);
         initAndReadIntoMemory();
-        writeDataToDisk();
     }
 
     @SuppressWarnings("ResultOfMethodCallIgnored")
     public void initAndReadIntoMemory() {
         this.writeLock.lock();
         try {
-            if (this.raf == null) {
-                File f = new File(this.logDBPath);
-                if (!f.exists()) f.createNewFile();
-                this.raf = new RandomAccessFile(f, "rw");
+            File f = this.logDBPath.toFile();
+            if (!f.exists()) f.createNewFile();
+            File[] files = f.listFiles();
+            List<File> dbFiles = new ArrayList<>();
+
+            if (files == null || files.length == 0) {
+                File temp = Path.of(f.getPath(), 1 + ".db").toFile();
+                if (!temp.exists()) temp.createNewFile();
+                dbFiles.add(temp);
+            } else {
+                dbFiles.addAll(Arrays.stream(files).collect(Collectors.toList()));
             }
-            BackupUtil.readFromDisk(this.map, this.raf);
+
+            File file = dbFiles.get(dbFiles.size() - 1);
+            MappedByteBuffer buffer = Storage.getMappedByteBuffer(file);
+            this.haveFreeSpaceFile.set(buffer);
+
+            for (File dbFile : dbFiles) {
+                BackupUtil.readFromDisk(this.map, dbFile);
+            }
         } catch (IOException e) {
             log.error(e);
         } finally {
@@ -75,20 +84,32 @@ public class LogDB {
         }
     }
 
-    public void writeDataToDisk() {
-        Runnable backup = () -> {
-            int size = this.buffer.size();
-            if (size > this.threshold.upperEndpoint() || this.lastAppendBackupTime + this.appendRate < System.nanoTime()) {
-                this.writeLock.lock();
-                try {
-                    BackupUtil.appendToDisk(this.buffer, size - this.threshold.lowerEndpoint(), this.raf);
-                } finally {
-                    this.writeLock.unlock();
+    public void writeDataToDisk(CacheBuffer.Item item) {
+        this.writeLock.lock();
+        try {
+            while (true) {
+                MappedByteBuffer finalBuffer = haveFreeSpaceFile.get();
+                long p = finalBuffer.getLong();
+                finalBuffer.position((int) Math.max(8, p));
+
+                int written = 2 * 4 + item.key.length + item.value.length;
+                if (finalBuffer.remaining() >= written) {
+                    AtomicInteger l = new AtomicInteger(0);
+                    write(finalBuffer, item.key, l);
+                    write(finalBuffer, item.value, l);
+                    finalBuffer.force();
+                    finalBuffer.putLong(0, 8 + l.get());// 更新头的长度，也就是目前文件写到的位置
+                    finalBuffer.force();
+                    break;
+                } else {
+                    haveFreeSpaceFile.set(Storage.getMappedByteBuffer(number, this.logDBPath, this.haveFreeSpaceFile));
                 }
-                this.lastAppendBackupTime = System.nanoTime();
             }
-        };
-        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(backup, 0, this.appendRate / 2, TimeUnit.NANOSECONDS);// 没半秒检查一次
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            this.writeLock.unlock();
+        }
     }
 
     public Object get(String key) {
@@ -96,24 +117,17 @@ public class LogDB {
     }
 
     public void save(List<LogEntry> logs) {
-        this.save(logs, false);
-    }
-
-    public void save(List<LogEntry> logs, boolean flush) {
         for (LogEntry entry : logs) {
             this.set(String.valueOf(entry.getIndex()), entry);
-        }
-        if (flush) {
-            this.writeDataToDisk();
         }
     }
 
     public void set(String key, Object value) {
-        if (key == null) return;
+        if (key == null || value == null) return;
         this.map.put(key, value);
         byte[] kb = key.getBytes();
         byte[] vb = KryoUtil.asByteArray(value);
-        this.buffer.push(ByteArrayUtil.combineKeyVal(kb, vb));
+        this.writeDataToDisk(new CacheBuffer.Item(kb, vb));
     }
 
     public void remove(String key) {

@@ -22,7 +22,6 @@ public class PowerRequestProcessor implements Processor {
         node.start = !request.stopService; // this close the server is soft shutdown, just not provide service, but still running
         if (request.powerOff) {
             node.db.writeDataToDisk();
-            node.logdb.writeDataToDisk();
             Runtime.getRuntime().exit(0); // power off
         }
         return new PowerResponse(true);

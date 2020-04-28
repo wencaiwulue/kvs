@@ -14,7 +14,9 @@ import util.ThreadUtil;
 
 import java.io.IOException;
 import java.nio.channels.ClosedChannelException;
+import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
+import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadLocalRandom;
@@ -73,7 +75,7 @@ public class Node implements Runnable {
     public Node(NodeAddress address, Set<NodeAddress> allNodeAddresses) {
         this.address = address;
         this.allNodeAddresses = allNodeAddresses;
-        this.db = new DB("C:\\Users\\89570\\Documents\\kvs_" + address.getSocketAddress().getPort() + ".db");
+        this.db = new DB("C:\\Users\\89570\\Documents\\kvs_" + address.getSocketAddress().getPort() + "_db");
         this.logdb = new LogDB("C:\\Users\\89570\\Documents\\kvs_" + address.getSocketAddress().getPort() + ".log");
         this.nextIndex = this.logdb.lastLogIndex + 1;
         this.processors = Arrays.asList(new AddPeerRequestProcessor(), new RemovePeerRequestProcessor(), new VoteRequestProcessor(), new PowerRequestProcessor(), new DownloadFileRequestProcessor());
@@ -115,13 +117,13 @@ public class Node implements Runnable {
                     if (response instanceof ErrorResponse) {
                         long size = 0;
                         try {
-                            size = this.logdb.raf.getChannel().size();
+                            size = FileChannel.open(this.logdb.file.get(0).toPath(), StandardOpenOption.READ).size();
                         } catch (ClosedChannelException e) {
                             log.error("who close the channel !!");
                         } catch (IOException e) {
                             log.error(e);
                         }
-                        InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) Client.doRequest(remote, new InstallSnapshotRequest(this.address, this.currentTerm, this.logdb.logDBPath, size));
+                        InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) Client.doRequest(remote, new InstallSnapshotRequest(this.address, this.currentTerm, this.logdb.logDBPath.toString(), size));
                         if (snapshotResponse == null || !snapshotResponse.isSuccess()) {
                             log.error("Install snapshot error, should retry?");
                         }

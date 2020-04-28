@@ -1,26 +1,28 @@
 package db.core;
 
-import com.google.common.collect.Range;
 import com.google.common.hash.BloomFilter;
 import com.google.common.hash.Funnels;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import util.BackupUtil;
-import util.ByteArrayUtil;
 import util.KryoUtil;
 import util.ThreadUtil;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.MappedByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayDeque;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.PriorityBlockingQueue;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.stream.Collectors;
 
 /**
  * 设计目标（每秒）
@@ -33,49 +35,58 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class DB {
     private static final Logger log = LogManager.getLogger(DB.class);
 
-    private final int size = 1000 * 1000;// 缓冲区大小
-    // 如果超过这个阈值，就启动备份写入流程
-    // 低于这个值就停止写入，因为管道是不停写入的，所以基本不会出现管道为空的情况
-    private final Range<Integer> threshold = Range.openClosed((int) (size * 0.2), (int) (size * 0.8));
-    private final ArrayDeque<byte[]> buffer = new ArrayDeque<>(size);// 这里是缓冲区，也就是每隔一段时间备份append的数据，或者这个buffer满了就备份数据
+    private final int size = 1000 * 1000;
+    private final CacheBuffer<CacheBuffer.Item> buffer = new CacheBuffer<>(size, 0.2D, 0.8D);// 这里是缓冲区，也就是每隔一段时间备份append的数据，或者这个buffer满了就备份数据
+    public final Storage storage;
 
     private final byte mode; // 备份方式为增量还是快照，或者是混合模式, 0--append, 1--snapshot, 2--append+snapshot
     private volatile long lastAppendBackupTime;
     private final long appendRate = 1000 * 1000; // 每一秒append一次
     private volatile long lastSnapshotBackupTime;
     private final long snapshotRate = 60 * appendRate; // 每一分钟snapshot一下
+    private final int maxFileSize = Integer.MAX_VALUE; // 大概文件大小为2gb
 
-    private final ConcurrentHashMap<String, Object> map;// RockDB or LevelDB? B-tree?
-    private final PriorityBlockingQueue<ExpireKey> expireKeys; // java.util.PriorityQueue ??
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Lock readLock = this.lock.readLock();
     private final Lock writeLock = this.lock.writeLock();
-    public final String dbPath;
-    private RandomAccessFile raf;
+    public final Path dbDir;
+    private final AtomicReference<MappedByteBuffer> haveFreeSpaceFile = new AtomicReference<>();
     // 可以判断是否存在kvs中，
     @SuppressWarnings("UnstableApiUsage")
     private static final BloomFilter<String> filter = BloomFilter.create(Funnels.stringFunnel(StandardCharsets.UTF_8), Integer.MAX_VALUE);
 
-    public DB(String dbPath) {
-        this.map = new ConcurrentHashMap<>(/*1 << 30*/); // 这是hashMap的容量
-        this.expireKeys = new PriorityBlockingQueue<>(11, ExpireKey::compareTo);
-        this.dbPath = dbPath;
+    public DB(String dbDir) {
+        this.dbDir = Path.of(dbDir);
+        this.storage = new Storage(this.dbDir, this.writeLock, this.haveFreeSpaceFile);
         this.mode = 2;
-        initAndReadIntoMemory();
-        checkExpireKey();
-        writeDataToDisk();
+        this.initAndReadIntoMemory();
+        this.checkExpireKey();
+        this.writeDataToDisk();
     }
 
     @SuppressWarnings("ResultOfMethodCallIgnored")
     public void initAndReadIntoMemory() {
         this.writeLock.lock();
         try {
-            if (this.raf == null) {
-                File f = new File(this.dbPath);
-                if (!f.exists()) f.createNewFile();
-                this.raf = new RandomAccessFile(f, "rw");
+            File f = this.dbDir.toFile();
+            if (!f.exists()) f.createNewFile();
+            File[] files = f.listFiles();
+            List<File> dbFiles = new ArrayList<>();
+
+            if (files == null || files.length == 0) {
+                File temp = Path.of(f.getPath(), 1 + ".db").toFile();
+                if (!temp.exists()) temp.createNewFile();
+                dbFiles.add(temp);
+            } else {
+                dbFiles.addAll(Arrays.stream(files).collect(Collectors.toList()));
             }
-            BackupUtil.readFromDisk(this.map, this.raf);
+
+            File file = dbFiles.get(dbFiles.size() - 1);
+            this.haveFreeSpaceFile.set(Storage.getMappedByteBuffer(file));
+
+            for (File dbFile : dbFiles) {
+                BackupUtil.readFromDisk(this.storage.map, dbFile);
+            }
         } catch (IOException e) {
             log.error(e);
         } finally {
@@ -85,12 +96,11 @@ public class DB {
 
     public void writeDataToDisk() {
         Runnable backup = () -> {
-            int size = this.buffer.size();
             if (this.mode == 0 || this.mode == 2) {
-                if (size > this.threshold.upperEndpoint() || this.lastAppendBackupTime + this.appendRate < System.nanoTime()) {
+                if (this.buffer.shouldToWriteOut() || this.lastAppendBackupTime + this.appendRate < System.nanoTime()) {
                     this.writeLock.lock();
                     try {
-                        BackupUtil.appendToDisk(this.buffer, size - this.threshold.lowerEndpoint(), this.raf);
+                        BackupUtil.appendToDisk(this.buffer, this.buffer.theNumberOfShouldToBeWritten(), this.haveFreeSpaceFile, this.maxFileSize);
                     } finally {
                         this.writeLock.unlock();
                     }
@@ -102,7 +112,7 @@ public class DB {
                 if (this.lastSnapshotBackupTime + this.snapshotRate < System.nanoTime()) {
                     this.lock.writeLock().lock();
                     try {
-                        BackupUtil.snapshotToDisk(this.map, this.raf);
+                        this.storage.snapshotRapidly();
                     } finally {
                         this.lock.writeLock().unlock();
                     }
@@ -116,13 +126,13 @@ public class DB {
     // check key expire every seconds
     public void checkExpireKey() {
         Runnable check = () -> {
-            while (!this.expireKeys.isEmpty()) {
-                ExpireKey expireKey = this.expireKeys.peek();
+            while (!this.storage.expireKeys.isEmpty()) {
+                ExpireKey expireKey = this.storage.expireKeys.peek();
                 if (System.nanoTime() >= expireKey.getExpire()) {
                     this.writeLock.lock();
                     try {
-                        this.map.remove(expireKey.getKey());
-                        this.expireKeys.poll();
+                        this.storage.map.remove(expireKey.getKey());
+                        this.storage.expireKeys.poll();
                     } finally {
                         this.writeLock.unlock();
                     }
@@ -135,10 +145,11 @@ public class DB {
         ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(check, 0, 1, TimeUnit.SECONDS);
     }
 
+
     public Object get(String key) {
         this.readLock.lock();
         try {
-            return map.get(key);
+            return this.storage.map.get(key);
         } finally {
             this.readLock.unlock();
         }
@@ -149,20 +160,20 @@ public class DB {
     }
 
     public void set(String key, Object value, int timeout, TimeUnit unit) {
-        if (key == null) return;
-        this.map.put(key, value);
+        if (key == null || value == null) return;
+        this.storage.map.put(key, value);
         if (timeout > 0) {
-            this.expireKeys.add(new ExpireKey(key, System.nanoTime() + unit.toNanos(timeout)));
+            this.storage.expireKeys.add(new ExpireKey(key, System.nanoTime() + unit.toNanos(timeout)));
         }
         byte[] kb = key.getBytes();
         byte[] vb = KryoUtil.asByteArray(value);
-        this.buffer.push(ByteArrayUtil.combineKeyVal(kb, vb));
+        this.buffer.addLast(new CacheBuffer.Item(kb, vb));
     }
 
     public void remove(String key) {
         this.writeLock.unlock();
         try {
-            this.map.remove(key);// expire key 可以不用删除
+            this.storage.map.remove(key);// expire key 可以不用删除
         } finally {
             this.writeLock.unlock();
         }
@@ -171,6 +182,7 @@ public class DB {
     public void expireKey(String key, int expire, TimeUnit unit) {
         // 如果已经在expireKey中，就会出问题。处理方法是加反向索引，但是这样值得吗
     }
+
 
     public static void main(String[] args) throws InterruptedException {
         DB db = new DB("");

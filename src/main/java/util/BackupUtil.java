@@ -2,21 +2,24 @@
 package util;
 
 import com.esotericsoftware.kryo.KryoException;
+import db.core.CacheBuffer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.BufferOverflowException;
 import java.nio.BufferUnderflowException;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
-import java.util.ArrayDeque;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * @author naison
@@ -32,50 +35,20 @@ public class BackupUtil {
      * -------------------------------------------------------------------------
      * 固定的8个byte的头，用于存储实际使用大小
      * */
-    public static synchronized void snapshotToDisk(Map<String, Object> map, RandomAccessFile raf) {
-        if (map.isEmpty() || raf == null) return;
+    public static synchronized void snapshotToDisk(Map<String, Object> map, List<File> files, int maxFileSize) {
+        if (map.isEmpty()) return;
 
-        try {
-            long p = 8L;// 固定的8byte文件头
-            try {
-                raf.seek(0);
-                p = raf.readLong();
-            } catch (IOException ignored) {
-            }
-
-            FileChannel channel = raf.getChannel();
-            MappedByteBuffer mapped = channel.map(FileChannel.MapMode.READ_WRITE, p, Integer.MAX_VALUE);
-            AtomicInteger l = new AtomicInteger(0);// 本次写入的量
-            for (Map.Entry<String, Object> next : map.entrySet()) {
-                byte[] key = next.getKey().getBytes();
-                write(mapped, key, l);
-                byte[] value = KryoUtil.asByteArray(next.getValue());
-                write(mapped, value, l);
-                if (l.getAcquire() >= Integer.MAX_VALUE - 1024 * 10) {// 如果已经还剩1k byte空间的话，需要重新扩容
-                    mapped = channel.map(FileChannel.MapMode.READ_WRITE, l.getAcquire(), Integer.MAX_VALUE);// 每次扩容都是2g, 这是也fileChannel的限制
-                    // 目前主流的linux文件格式最大单体文件大小限制，ext3--16TB，ext4--1EB, 由于这是内存存储器，而RAM可能的容量是4T以下，所以暂时够用
-                }
-            }
-            mapped.force();
-
-            raf.seek(0);
-            raf.writeLong(p + l.get());// 更新头的长度，也就是目前文件写到的位置
-        } catch (IOException e) {
-            e.printStackTrace();
-            log.error("这里出问题了", e);
-        }
-    }
-
-
-    public static synchronized void appendToDisk(ArrayDeque<byte[]> pipeline, int size, RandomAccessFile raf) {
-        if (raf == null || pipeline.isEmpty()) return;
+        RandomAccessFile raf = getLastRAF(files);
+        if (raf == null) return;
 
         long p = 8L;// 固定的8byte文件头
         try {
             raf.seek(0);
             p = raf.readLong();
-        } catch (IOException ignored) {
+        } catch (IOException e) {
+            log.error(e);
         }
+
         FileChannel channel = raf.getChannel();
         MappedByteBuffer mapped = null;
         try {
@@ -86,25 +59,65 @@ public class BackupUtil {
         }
         if (mapped == null) return;
 
-        int length = 0;// 本次写入的量
-        for (int i = 0; i < size; i++) {
-            byte[] bytes = pipeline.pollLast();
-            if (bytes != null) {
-                mapped.put(bytes);
-                length += bytes.length;
+        AtomicInteger l = new AtomicInteger(0);// 本次写入的量
+        for (Map.Entry<String, Object> next : map.entrySet()) {
+            byte[] key = next.getKey().getBytes();
+            write(mapped, key, l);
+            byte[] value = KryoUtil.asByteArray(next.getValue());
+            write(mapped, value, l);
+            if (l.getAcquire() >= Integer.MAX_VALUE - 1024 * 10) {// 如果已经还剩1k byte空间的话，需要重新扩容
+//                mapped = channel.map(FileChannel.MapMode.READ_WRITE, l.getAcquire(), Integer.MAX_VALUE);// 每次扩容都是2g, 这是也fileChannel的限制
+                // 目前主流的linux文件格式最大单体文件大小限制，ext3--16TB，ext4--1EB, 由于这是内存存储器，而RAM可能的容量是4T以下，所以暂时够用
             }
         }
         mapped.force();
 
         try {
             raf.seek(0);
-            raf.writeLong(p + length);// 更新头的长度
+            raf.writeLong(p + l.get());// 更新头的长度，也就是目前文件写到的位置
         } catch (IOException e) {
             log.error(e);
         }
     }
 
-    private static void write(MappedByteBuffer map, byte[] bytes, AtomicInteger l) {
+    private static RandomAccessFile getLastRAF(List<File> files) {
+        if (files.isEmpty()) return null;
+        try {
+            return new RandomAccessFile(files.get(files.size() - 1), "rw");
+        } catch (FileNotFoundException e) {
+            log.error(e);
+            return null;
+        }
+    }
+
+
+    public static synchronized void appendToDisk(CacheBuffer<CacheBuffer.Item> pipeline, int size, AtomicReference<MappedByteBuffer> reference, int maxFileSize) {
+        if (pipeline.isEmpty()) return;
+        MappedByteBuffer mapped = reference.get();
+        if (mapped == null) return;
+        int p = mapped.position();
+
+        int length = 0;// 本次写入的量
+        for (int i = 0; i < size; i++) {
+            CacheBuffer.Item bytes = pipeline.pollLast();
+            if (bytes != null) {
+                try {
+                    mapped.put(ByteArrayUtil.intToByteArray(bytes.key.length));
+                    mapped.put(bytes.key);
+                    mapped.put(ByteArrayUtil.intToByteArray(bytes.value.length));
+                    mapped.put(bytes.value);
+                    length += bytes.getSize();
+                } catch (BufferOverflowException e) {
+                    log.error("this is not impossible", e);
+                }
+            }
+        }
+        mapped.force();
+        mapped.putLong(0, p + length);// 更新头的长度
+        mapped.force();
+    }
+
+    public static void write(MappedByteBuffer map, byte[] bytes, AtomicInteger l) {
         try {
             map.putInt(bytes.length);
             map.put(bytes);
@@ -114,7 +127,13 @@ public class BackupUtil {
         }
     }
 
-    public static synchronized void readFromDisk(Map<String, Object> map, RandomAccessFile raf) {
+    public static synchronized void readFromDisk(Map<String, Object> map, File file) {
+        RandomAccessFile raf = null;
+        try {
+            raf = new RandomAccessFile(file, "rw");
+        } catch (FileNotFoundException e) {
+            log.error(e);
+        }
         if (raf == null) return;
 
         long p = 8L;// 固定的8byte文件头
@@ -175,33 +194,33 @@ public class BackupUtil {
         }
     }
 
-    @SuppressWarnings("ResultOfMethodCallIgnored")
-    public static void main(String[] args) throws IOException {
-        String path = "C:\\Users\\89570\\Documents\\test3.txt";
-        File f = new File(path);
-        if (!f.exists()) f.createNewFile();
-        RandomAccessFile raf = new RandomAccessFile(f, "rw");
-        int n =/*1 << 30*/ 1000 * 1000 * 5;
-        ConcurrentHashMap<String, Object> map = new ConcurrentHashMap<>(n);
-        ConcurrentHashMap<String, Object> map1 = new ConcurrentHashMap<>(n);
-
-        long start = System.nanoTime();
-        for (int i = 0; i < n; i++) {
-            map.put(String.valueOf(i), i);
-        }
-        System.out.println("存入map花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
-        start = System.nanoTime();
-        snapshotToDisk(map, raf);
-        System.out.println("写入磁盘花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
-        start = System.nanoTime();
-        readFromDisk(map1, raf);
-        System.out.println("写入内存花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
-        int m = 0;
-        for (int i = 0; i < n; i++) {
-            if (!map1.containsKey(String.valueOf(i)) || (int) map1.get(String.valueOf(i)) != i) {
-                m++;
-            }
-        }
-        System.out.println("不匹配的数量为：" + m);
-    }
+//    @SuppressWarnings("ResultOfMethodCallIgnored")
+//    public static void main(String[] args) throws IOException {
+//        String path = "C:\\Users\\89570\\Documents\\test3.txt";
+//        File f = new File(path);
+//        if (!f.exists()) f.createNewFile();
+//        RandomAccessFile raf = new RandomAccessFile(f, "rw");
+//        int n =/*1 << 30*/ 1000 * 1000 * 5;
+//        ConcurrentHashMap<String, Object> map = new ConcurrentHashMap<>(n);
+//        ConcurrentHashMap<String, Object> map1 = new ConcurrentHashMap<>(n);
+//
+//        long start = System.nanoTime();
+//        for (int i = 0; i < n; i++) {
+//            map.put(String.valueOf(i), i);
+//        }
+//        System.out.println("存入map花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
+//        start = System.nanoTime();
+//        snapshotToDisk(map, raf, Integer.MAX_VALUE);
+//        System.out.println("写入磁盘花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
+//        start = System.nanoTime();
+//        readFromDisk(map1, raf);
+//        System.out.println("写入内存花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
+//        int m = 0;
+//        for (int i = 0; i < n; i++) {
+//            if (!map1.containsKey(String.valueOf(i)) || (int) map1.get(String.valueOf(i)) != i) {
+//                m++;
+//            }
+//        }
+//        System.out.println("不匹配的数量为：" + m);
+//    }
 }

@@ -85,7 +85,7 @@ public class InstallSnapshotRequestProcessor implements Processor {
         }
 
         TreeMap<String, Object> treeMap = new TreeMap<>();
-        BackupUtil.readFromDisk(treeMap, file);
+//        BackupUtil.readFromDisk(treeMap, file);
 
         for (Object o : treeMap.values()) {
             StateMachine.writeLogToDB(node, (LogEntry) o);
