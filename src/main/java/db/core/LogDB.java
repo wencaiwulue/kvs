@@ -44,7 +44,7 @@ public class LogDB {
 
     public final Path logDBPath;
     public List<File> file;
-    private final AtomicReference<MappedByteBuffer> haveFreeSpaceFile = new AtomicReference<>();
+    private final AtomicReference<MappedByteBuffer> lastModify = new AtomicReference<>();
     private final AtomicInteger number = new AtomicInteger(0);
 
     public LogDB(String logDBPath) {
@@ -71,8 +71,8 @@ public class LogDB {
             }
 
             File file = dbFiles.get(dbFiles.size() - 1);
-            MappedByteBuffer buffer = Storage.getMappedByteBuffer(file);
-            this.haveFreeSpaceFile.set(buffer);
+            MappedByteBuffer buffer = BackupUtil.getMappedByteBuffer(file);
+            this.lastModify.set(buffer);
 
             for (File dbFile : dbFiles) {
                 BackupUtil.readFromDisk(this.map, dbFile);
@@ -88,21 +88,21 @@ public class LogDB {
         this.writeLock.lock();
         try {
             while (true) {
-                MappedByteBuffer finalBuffer = haveFreeSpaceFile.get();
+                MappedByteBuffer finalBuffer = lastModify.get();
                 long p = finalBuffer.getLong();
                 finalBuffer.position((int) Math.max(8, p));
 
                 int written = 2 * 4 + item.key.length + item.value.length;
                 if (finalBuffer.remaining() >= written) {
                     AtomicInteger l = new AtomicInteger(0);
-                    write(finalBuffer, item.key, l);
-                    write(finalBuffer, item.value, l);
+                    write(finalBuffer, item.key);
+                    write(finalBuffer, item.value);
                     finalBuffer.force();
                     finalBuffer.putLong(0, 8 + l.get());// 更新头的长度，也就是目前文件写到的位置
                     finalBuffer.force();
                     break;
                 } else {
-                    haveFreeSpaceFile.set(Storage.getMappedByteBuffer(number, this.logDBPath, this.haveFreeSpaceFile));
+                    lastModify.set(BackupUtil.getMappedByteBuffer(number, this.logDBPath, this.lastModify));
                 }
             }
         } catch (Exception e) {

@@ -4,13 +4,13 @@ import com.google.common.hash.BloomFilter;
 import com.google.common.hash.Funnels;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.checkerframework.checker.units.qual.A;
 import util.BackupUtil;
 import util.KryoUtil;
 import util.ThreadUtil;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.MappedByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -50,14 +51,15 @@ public class DB {
     private final Lock readLock = this.lock.readLock();
     private final Lock writeLock = this.lock.writeLock();
     public final Path dbDir;
-    private final AtomicReference<MappedByteBuffer> haveFreeSpaceFile = new AtomicReference<>();
+    private final AtomicReference<MappedByteBuffer> lastModify = new AtomicReference<>();
+    private final AtomicInteger number = new AtomicInteger(0);
     // 可以判断是否存在kvs中，
     @SuppressWarnings("UnstableApiUsage")
     private static final BloomFilter<String> filter = BloomFilter.create(Funnels.stringFunnel(StandardCharsets.UTF_8), Integer.MAX_VALUE);
 
     public DB(String dbDir) {
         this.dbDir = Path.of(dbDir);
-        this.storage = new Storage(this.dbDir, this.writeLock, this.haveFreeSpaceFile);
+        this.storage = new Storage(this.dbDir, this.writeLock, this.lastModify);
         this.mode = 2;
         this.initAndReadIntoMemory();
         this.checkExpireKey();
@@ -82,7 +84,7 @@ public class DB {
             }
 
             File file = dbFiles.get(dbFiles.size() - 1);
-            this.haveFreeSpaceFile.set(Storage.getMappedByteBuffer(file));
+            this.lastModify.set(BackupUtil.getMappedByteBuffer(file));
 
             for (File dbFile : dbFiles) {
                 BackupUtil.readFromDisk(this.storage.map, dbFile);
@@ -100,7 +102,7 @@ public class DB {
                 if (this.buffer.shouldToWriteOut() || this.lastAppendBackupTime + this.appendRate < System.nanoTime()) {
                     this.writeLock.lock();
                     try {
-                        BackupUtil.appendToDisk(this.buffer, this.buffer.theNumberOfShouldToBeWritten(), this.haveFreeSpaceFile, this.maxFileSize);
+                        BackupUtil.appendToDisk(this.buffer, this.buffer.theNumberOfShouldToBeWritten(), this.dbDir, this.lastModify, this.number);
                     } finally {
                         this.writeLock.unlock();
                     }

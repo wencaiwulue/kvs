@@ -11,23 +11,6 @@ import java.nio.ByteBuffer;
  * @since 4/13/2020 20:49
  */
 public class ByteArrayUtil {
-    // optimize
-    public static byte[] combine(byte[]... bytes) {
-        int l = 0;
-        for (byte[] aByte : bytes) {
-            l += aByte.length;
-        }
-        ByteBuffer byteBuffer = ByteBuffer.allocate(l);
-        for (byte[] aByte : bytes) {
-            byteBuffer.put(aByte);
-        }
-        return byteBuffer.array();
-    }
-
-    public static byte[] combineKeyVal(byte[] key, byte[] val) {
-        return combine(intToByteArray(key.length), key, intToByteArray(val.length), val);
-    }
-
     public static ByteBuffer write(Object object) {
         FSTObjectOutput objectOutput = util.FSTUtil.getConf().getObjectOutput();
         try {
