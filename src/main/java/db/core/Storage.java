@@ -23,7 +23,6 @@ public class Storage {
     private final Lock writeLock;
     private final AtomicReference<MappedByteBuffer> lastModify;
 
-    @SuppressWarnings("ResultOfMethodCallIgnored")
     public Storage(Path dbDir, Lock lock, AtomicReference<MappedByteBuffer> lastModify) {
         this.writeLock = lock;
         this.lastModify = lastModify;
@@ -31,12 +30,7 @@ public class Storage {
         this.map = new ConcurrentHashMap<>(/*1 << 30*/); // 这是hashMap的容量
         this.expireKeys = new PriorityBlockingQueue<>(11, ExpireKey::compareTo);
         File file = this.dbSnapshotDir.toFile();
-        FileUtil.rm(file);
-        try {
-            file.mkdirs();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        FileUtil.emptyFolder(file);
     }
 
     public void snapshotRapidly() {
