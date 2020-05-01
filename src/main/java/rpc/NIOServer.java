@@ -143,6 +143,7 @@ public class NIOServer implements Runnable {
     private boolean processRead(SelectionKey key) {
         try {
             ThreadUtil.getThreadPool().execute(new Handler(key, node));
+//            new Handler(key, node).run();
         } catch (Exception e) {
             return false;
         }
@@ -163,21 +164,35 @@ public class NIOServer implements Runnable {
         public void run() {
             SocketChannel channel = (SocketChannel) key.channel();
             if (channel != null) {
-                try {
-                    ByteBuffer byteBuffer = ByteBuffer.allocate(1024);
-                    int read = channel.read(byteBuffer);
-                    if (read > 0) {// 客户端主动断开链接，也会发送一个读事件 返回值为-1
-                        Request o = (Request) FSTUtil.getConf().asObject(byteBuffer.array());
-                        this.node.handle(o, channel);// handle the request
-                    }
-                } catch (IOException e) {
-                    log.error("出错了，关闭channel", e);
+                synchronized (channel.toString().intern()) {// 一个channel不能同时被两个线程读取，不然内容回错乱，但是这里会不会有更好的方法呢？
                     try {
-                        channel.close();
-                    } catch (Exception ex) {
-                        log.error(ex);
+                        ByteBuffer byteBuffer = ByteBuffer.allocate(4);
+                        int read = channel.read(byteBuffer);
+                        if (read > 0) {// 客户端主动断开链接，也会发送一个读事件 返回值为-1
+                            try {
+                                byteBuffer.flip();
+                                int len = byteBuffer.getInt();
+                                if (len > 0) {
+                                    System.out.println("length: " + len);
+                                    ByteBuffer buffer = ByteBuffer.allocate(len);
+                                    if (channel.read(buffer) == len) {
+                                        Request o = (Request) FSTUtil.getConf().asObject(buffer.array());
+                                        this.node.handle(o, channel);// handle the request
+                                    }
+                                }
+                            } catch (OutOfMemoryError oom) {
+                                log.error(oom);
+                            }
+                        }
+                    } catch (IOException e) {
+                        log.error("出错了，关闭channel", e);
+                        try {
+                            channel.close();
+                        } catch (Exception ex) {
+                            log.error(ex);
+                        }
+                        this.key.cancel();
                     }
-                    this.key.cancel();
                 }
             } else {
                 log.error("channel disconnect, should retry or not ?");

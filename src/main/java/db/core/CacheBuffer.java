@@ -43,7 +43,7 @@ public class CacheBuffer<T> {
         this.buffer.addLast(t);
     }
 
-    public boolean isEmpty(){
+    public boolean isEmpty() {
         return this.buffer.isEmpty();
     }
 

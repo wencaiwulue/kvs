@@ -5,7 +5,6 @@ import org.apache.logging.log4j.Logger;
 import raft.NodeAddress;
 import rpc.model.requestresponse.Request;
 import rpc.model.requestresponse.Response;
-import util.ByteArrayUtil;
 import util.FSTUtil;
 import util.ThreadUtil;
 
@@ -33,13 +32,13 @@ public class Client {
 
     private static final ConcurrentHashMap<Integer, Response> responseMap = new ConcurrentHashMap<>();
     private static final LinkedBlockingDeque<SocketRequest> requestTask = new LinkedBlockingDeque<>();
-    private static final Thread sendRequest = new Thread(Client::writeRequest);
+    private static final Thread writeRequestTask = new Thread(Client::writeRequest);
 
     static {
         try {
             selector = Selector.open();
             ThreadUtil.getThreadPool().execute(Client::readResponse);
-            sendRequest.start();
+            writeRequestTask.start();
         } catch (IOException e) {
             log.error("at the beginning error occurred, shutting down...", e);
             Runtime.getRuntime().exit(-1);
@@ -76,7 +75,7 @@ public class Client {
         if (remote == null || !remote.alive) return null;
 
         requestTask.addLast(new SocketRequest(remote, request));
-        LockSupport.unpark(sendRequest);
+        LockSupport.unpark(writeRequestTask);
 
         // optimize
         int m = 1;
@@ -102,7 +101,7 @@ public class Client {
                         SocketChannel channel = getConnection(socketRequest.address);
                         if (channel != null && socketRequest.address.alive) {
                             try {
-                                int write = channel.write(ByteArrayUtil.write(socketRequest.request));
+                                int write = channel.write(FSTUtil.asArrayWithLength(socketRequest.request));
                                 if (write <= 0) throw new IOException("魔鬼！！！");
                                 success = true;
                                 break;
@@ -125,13 +124,21 @@ public class Client {
         Consumer<SelectionKey> action = key -> {
             if (key.isReadable()) {
                 SocketChannel channel = (SocketChannel) key.channel();
-                ByteBuffer byteBuffer = ByteBuffer.allocate(1024);
+                ByteBuffer contentLen = ByteBuffer.allocate(4);
                 try {
-                    int read = channel.read(byteBuffer);
+                    int read = channel.read(contentLen);
                     if (read > 0) {
-                        Response response = (Response) FSTUtil.getConf().asObject(byteBuffer.array());
-                        if (response != null) {
-                            responseMap.put(response.requestId, response);
+                        contentLen.flip();
+                        int len = contentLen.getInt();
+                        if (len > 0) {
+                            System.out.println("len: " + len);
+                            ByteBuffer result = ByteBuffer.allocate(len);
+                            if (len == channel.read(result)) {
+                                Response response = (Response) FSTUtil.getConf().asObject(result.array());
+                                if (response != null) {
+                                    responseMap.put(response.requestId, response);
+                                }
+                            }
                         }
                     } else if (read < 0) {
                         if (key.isValid()) {

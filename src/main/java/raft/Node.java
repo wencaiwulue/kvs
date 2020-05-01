@@ -9,7 +9,7 @@ import raft.enums.Role;
 import raft.processor.*;
 import rpc.Client;
 import rpc.model.requestresponse.*;
-import util.ByteArrayUtil;
+import util.FSTUtil;
 import util.ThreadUtil;
 
 import java.io.IOException;
@@ -232,7 +232,7 @@ public class Node implements Runnable {
         }
 
         try {
-            channel.write(ByteArrayUtil.write(r));
+            channel.write(FSTUtil.asArrayWithLength(r));
         } catch (ClosedChannelException e) {
             log.error("这里的channel失效了, 需要重试吗?");
         } catch (IOException e) {
