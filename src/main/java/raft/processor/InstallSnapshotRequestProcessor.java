@@ -17,6 +17,8 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Objects;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
@@ -43,20 +45,20 @@ public class InstallSnapshotRequestProcessor implements Processor {
             log.error("this is impossible");
         }
 
-        FileChannel channel = null;
+        FileChannel fileChannel = null;
         try {
-            channel = FileChannel.open(Path.of(request.filename), StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+            fileChannel = FileChannel.open(Path.of(request.filename), StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
         } catch (IOException e) {
             log.error(e);
         }
-        assert channel != null;
+        assert fileChannel != null;
 
 
         // 应该直接写盘，还是都放在内存中(内存可能会炸)呢?
         int times = (int) Math.ceil(request.fileSize / 4096D);
         int p = 0;
         int offset = 0;
-        int length = 1024 * 10 * 10; // 10MB
+        int length = 1024 * 10 * 10; // 每次下载10MB,这里如果要多线程下载，相应的连接也需要改
         do {
             int finalOffset = offset;
             Callable<Response> c = () -> Client.doRequest(request.leader, new DownloadFileRequest(request.filename, finalOffset, length));
@@ -65,8 +67,8 @@ public class InstallSnapshotRequestProcessor implements Processor {
 
             if (response != null) {
                 try {
-                    channel.write(ByteBuffer.wrap(response.bytes));
-                    channel.force(true);
+                    fileChannel.write(ByteBuffer.wrap(response.bytes));// 写入磁盘
+                    fileChannel.force(true);
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
@@ -74,20 +76,12 @@ public class InstallSnapshotRequestProcessor implements Processor {
             } else {
                 log.error("what should i do?");
             }
-        } while (p++ < times);
+        } while (p++ < times); // 下载文件
 
+        List<Object> list = new LinkedList<>();
+        BackupUtil.readFromDisk(list, Path.of(request.filename).toFile());
 
-        RandomAccessFile file = null;
-        try {
-            file = new RandomAccessFile(request.filename, "rw");
-        } catch (FileNotFoundException e) {
-            log.error(e);
-        }
-
-        TreeMap<String, Object> treeMap = new TreeMap<>();
-//        BackupUtil.readFromDisk(treeMap, file);
-
-        for (Object o : treeMap.values()) {
+        for (Object o : list) {
             StateMachine.writeLogToDB(node, (LogEntry) o);
         }
 

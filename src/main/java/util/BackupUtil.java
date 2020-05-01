@@ -15,9 +15,7 @@ import java.nio.BufferUnderflowException;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
-import java.util.Spliterator;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -175,6 +173,69 @@ public class BackupUtil {
                     mapped.get(bytes, 0, valLen);
                     Object value = KryoUtil.asObject(bytes, 0, valLen);
                     map.put(key, value);
+                    a = kLen;
+                    b = valLen;
+                    c = 4;
+                } catch (BufferUnderflowException | IndexOutOfBoundsException | KryoException e) {
+                    d = size - len;
+                    break;
+                }
+            }
+        }
+    }
+
+    public static synchronized void readFromDisk(Collection<Object> collection, File file) {
+        RandomAccessFile raf = null;
+        try {
+            raf = new RandomAccessFile(file, "rw");
+        } catch (FileNotFoundException e) {
+            log.error(e);
+        }
+        if (raf == null) return;
+
+        long p = 8L;// 固定的8byte文件头
+        try {
+            raf.seek(0);
+            p = raf.readLong();
+        } catch (IOException ignored) {
+        }
+        FileChannel channel = raf.getChannel();
+
+        int m = Integer.MAX_VALUE >> 6;// 裁剪的大小
+
+        int t = (int) Math.ceil((double) (p - 8) / m);// 经测试貌似有点儿慢
+
+        long len = 0;
+        long d = 0;
+
+        byte[] bytes = new byte[1024];
+        for (int i = 0; i < t; i++) {// 裁剪的部位刚好是一个byte[]的中间，而不是一个与另一个byte[]之间的空隙
+            long position = 8 + m * i - d;
+            long size = (m * (i + 1) > p - 8) ? p - 8 : m * (i + 1);
+            MappedByteBuffer mapped = null;// 跳过头位置
+            try {
+                mapped = channel.map(FileChannel.MapMode.READ_WRITE, position, size);
+            } catch (IOException e) {
+                e.printStackTrace();
+                log.error(e);
+            }
+            if (mapped == null) return;
+
+            int a = 0, b = 0, c = 0;
+            d = 0;
+            len = 0;
+            while (mapped.hasRemaining() /*&& mapped.remaining() >= 1024 * 10*/) {
+                len += a + b + c * 2;
+                try {
+                    int kLen = mapped.getInt();
+                    mapped.position(mapped.position() + kLen);// 跳过key
+                    int valLen = mapped.getInt();
+                    if (valLen > bytes.length) {
+                        bytes = new byte[valLen];
+                    }
+                    mapped.get(bytes, 0, valLen);
+                    Object value = KryoUtil.asObject(bytes, 0, valLen);
+                    collection.add(value);
                     a = kLen;
                     b = valLen;
                     c = 4;

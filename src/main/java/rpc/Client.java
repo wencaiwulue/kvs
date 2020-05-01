@@ -27,6 +27,7 @@ import java.util.function.Consumer;
 public class Client {
     private static final Logger log = LogManager.getLogger(Client.class);
 
+    // todo 其实这里可以是address -> list<channel>, 需要支持多个连接
     private static final ConcurrentHashMap<NodeAddress, SocketChannel> connections = new ConcurrentHashMap<>();// 主节点于各个简单的链接
     private static Selector selector;// 这个selector处理的是请求的回包
 
