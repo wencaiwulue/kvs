@@ -196,13 +196,15 @@ public class DB {
     }
 
 
-    public static void main(String[] args) throws InterruptedException {
+    public static void main(String[] args) {
         DB db = new DB(Config.DB_DIR);
         for (int i = 4; i > 0; i--) {
-            db.set(String.valueOf(i), i, i, TimeUnit.NANOSECONDS);
+            db.set(String.valueOf(i), i, i, TimeUnit.MINUTES);
         }
-        Thread.sleep(1000);
-        System.out.println(db);
+        db.expireKey(String.valueOf(2), -1, TimeUnit.NANOSECONDS);
+        db.expireKeys.remove(new ExpireKey(String.valueOf(3), 100, TimeUnit.MINUTES));
+        System.out.println(db.expireKeys.size());
+
     }
 
 }

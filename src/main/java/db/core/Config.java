@@ -1,6 +1,7 @@
 package db.core;
 
 import com.google.common.collect.Range;
+import util.ParseUtil;
 
 import java.nio.file.Path;
 import java.time.Duration;
@@ -12,7 +13,7 @@ import java.time.Duration;
  * @since 5/3/2020 16:21
  */
 public interface Config {
-    int PORT = Integer.parseInt(System.getProperty("port"));
+    int PORT = Math.max(8000, ParseUtil.parseInt(System.getProperty("port")));
     Path DB_DIR = Path.of("C:\\Users\\89570\\Documents\\kvs_" + PORT + "\\db");
     Path LOG_DIR = Path.of("C:\\Users\\89570\\Documents\\kvs_" + PORT + "\\log");
 

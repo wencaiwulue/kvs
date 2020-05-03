@@ -1,5 +1,6 @@
 package db.core;
 
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -36,10 +37,19 @@ public class ExpireKey implements Comparable<ExpireKey> {
 
     @Override
     public int compareTo(ExpireKey o) {
-        if (o.expire > 0 && this.expire > 0) {
-            return Long.compare(this.expire, o.expire);
-        } else {
-            return key.compareTo(o.key);
-        }
+        return Long.compare(this.expire, o.expire);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        ExpireKey expireKey = (ExpireKey) o;
+        return key.equals(expireKey.key);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(key);
     }
 }
