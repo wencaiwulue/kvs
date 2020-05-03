@@ -1,6 +1,7 @@
 package rpc;
 
 
+import db.core.Config;
 import raft.Node;
 import raft.NodeAddress;
 import util.ThreadUtil;
@@ -38,8 +39,7 @@ public class App {
     }
 
     public static void main(String[] args) {
-        int port = Integer.parseInt(args[0]);
-        InetSocketAddress follower = new InetSocketAddress("localhost", port);
+        InetSocketAddress follower = new InetSocketAddress("localhost", Config.PORT);
         new App(follower).start();
     }
 

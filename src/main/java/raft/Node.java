@@ -1,5 +1,6 @@
 package raft;
 
+import db.core.Config;
 import db.core.DB;
 import db.core.LogDB;
 import lombok.Data;
@@ -75,8 +76,8 @@ public class Node implements Runnable {
     public Node(NodeAddress address, Set<NodeAddress> allNodeAddresses) {
         this.address = address;
         this.allNodeAddresses = allNodeAddresses;
-        this.db = new DB("C:\\Users\\89570\\Documents\\kvs_" + address.getSocketAddress().getPort() + "_db");
-        this.logdb = new LogDB("C:\\Users\\89570\\Documents\\kvs_" + address.getSocketAddress().getPort() + ".log");
+        this.db = new DB(Config.DB_DIR);
+        this.logdb = new LogDB(Config.LOG_DIR);
         this.nextIndex = this.logdb.lastLogIndex + 1;
         this.processors = Arrays.asList(new AddPeerRequestProcessor(), new RemovePeerRequestProcessor(), new VoteRequestProcessor(), new PowerRequestProcessor(), new DownloadFileRequestProcessor());
         this.KVProcessors = Arrays.asList(new AppendEntriesRequestProcessor(), new InstallSnapshotRequestProcessor(), new CURDProcessor());
@@ -90,8 +91,7 @@ public class Node implements Runnable {
             }
 
             if (this.nextElectTime > System.nanoTime()) {
-//                System.out.println("还剩：" + TimeUnit.NANOSECONDS.toMillis(this.nextElectTime - System.nanoTime()) + "ms开始选举");
-                return; // sleep until it's time to electing
+                return;
             }
 
             // electing start
@@ -123,7 +123,7 @@ public class Node implements Runnable {
                         } catch (IOException e) {
                             log.error(e);
                         }
-                        InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) Client.doRequest(remote, new InstallSnapshotRequest(this.address, this.currentTerm, this.logdb.logDBPath.toString(), size));
+                        InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) Client.doRequest(remote, new InstallSnapshotRequest(this.address, this.currentTerm, this.logdb.dir.toString(), size));
                         if (snapshotResponse == null || !snapshotResponse.isSuccess()) {
                             log.error("Install snapshot error, should retry?");
                         }
@@ -203,8 +203,8 @@ public class Node implements Runnable {
     }
 
 
-    public static boolean checkAlive(SocketChannel channel) {
-        return channel != null && channel.isOpen() && channel.isConnected();
+    public static boolean isDead(SocketChannel channel) {
+        return channel == null || !channel.isOpen() || !channel.isConnected();
     }
 
     public boolean isLeader() {

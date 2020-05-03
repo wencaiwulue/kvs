@@ -3,8 +3,10 @@ package util;
 
 import com.esotericsoftware.kryo.KryoException;
 import db.core.CacheBuffer;
+import db.core.storage.StorageEngine;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import raft.LogEntry;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -15,7 +17,9 @@ import java.nio.BufferUnderflowException;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.Collection;
+import java.util.Map;
+import java.util.Spliterator;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -63,17 +67,46 @@ public class BackupUtil {
         });
     }
 
-    private static RandomAccessFile getLastRAF(List<File> files) {
-        if (files.isEmpty()) return null;
+
+    public static synchronized void snapshotToDisk(StorageEngine map, Path path, AtomicReference<MappedByteBuffer> lastModify) {
+        AtomicInteger ai = new AtomicInteger(0);
+        getMappedByteBuffer(ai, path, lastModify);
+
+        AtomicInteger l = new AtomicInteger(0);// 本次写入的量
+        map.iterator().forEachRemaining(e -> {
+            Map.Entry<String, Object> ee = (Map.Entry<String, Object>) e;
+            while (true) {
+                MappedByteBuffer finalBuffer = lastModify.get();
+                byte[] key = ee.getKey().getBytes();
+                byte[] value = KryoUtil.asByteArray(ee.getValue());
+
+                if (finalBuffer.remaining() >= 2 * 4 + key.length + value.length) {
+                    write(finalBuffer, key);
+                    write(finalBuffer, value);
+                    l.addAndGet(4 * 2);
+                    break;
+                } else {
+                    finalBuffer.force();
+                    finalBuffer.putLong(0, 8 + l.get());// 更新头的长度，也就是目前文件写到的位置
+                    finalBuffer.force();
+                    l.set(0);
+                    lastModify.set(getMappedByteBuffer(ai, path, lastModify));
+                }
+            }
+        });
+    }
+
+    private static RandomAccessFile toRAF(File file) {
+        if (file == null) return null;
         try {
-            return new RandomAccessFile(files.get(files.size() - 1), "rw");
+            return new RandomAccessFile(file, "rw");
         } catch (FileNotFoundException e) {
             log.error(e);
             return null;
         }
     }
 
-    public static synchronized void appendToDisk(CacheBuffer<CacheBuffer.Item> pipeline, int size, Path path, AtomicReference<MappedByteBuffer> lastModify, AtomicInteger number) {
+    public static synchronized void appendToDisk(CacheBuffer<CacheBuffer.Item> pipeline, int size, Path path, AtomicReference<MappedByteBuffer> lastModify, AtomicInteger fileNumber) {
         if (pipeline.isEmpty()) return;
         MappedByteBuffer mapped = lastModify.get();
         if (mapped == null) return;
@@ -81,7 +114,7 @@ public class BackupUtil {
 
         int length = 0;// 本次写入的量
         for (int i = 0; i < size; i++) {
-            CacheBuffer.Item bytes = pipeline.peekLast();
+            CacheBuffer.Item bytes = pipeline.peek();
             if (bytes != null) {
                 while (true) {
                     MappedByteBuffer byteBuffer = lastModify.get();
@@ -91,13 +124,13 @@ public class BackupUtil {
                         byteBuffer.putInt(bytes.value.length);
                         byteBuffer.put(bytes.value);
                         length += bytes.getSize();
-                        pipeline.pollLast();
+                        pipeline.poll();
                         break;
                     } else {
                         byteBuffer.force();
                         byteBuffer.putLong(0, p + length);// 更新头的长度
                         byteBuffer.force();
-                        getMappedByteBuffer(number, path, lastModify);
+                        getMappedByteBuffer(fileNumber, path, lastModify);
                     }
                 }
             }
@@ -117,13 +150,8 @@ public class BackupUtil {
         }
     }
 
-    public static synchronized void readFromDisk(Map<String, Object> map, File file) {
-        RandomAccessFile raf = null;
-        try {
-            raf = new RandomAccessFile(file, "rw");
-        } catch (FileNotFoundException e) {
-            log.error(e);
-        }
+    public static synchronized void readFromDisk(StorageEngine engine, File file) {
+        RandomAccessFile raf = toRAF(file);
         if (raf == null) return;
 
         long p = 8L;// 固定的8byte文件头
@@ -172,7 +200,7 @@ public class BackupUtil {
                     }
                     mapped.get(bytes, 0, valLen);
                     Object value = KryoUtil.asObject(bytes, 0, valLen);
-                    map.put(key, value);
+                    engine.set(key, value);
                     a = kLen;
                     b = valLen;
                     c = 4;
@@ -185,12 +213,7 @@ public class BackupUtil {
     }
 
     public static synchronized void readFromDisk(Collection<Object> collection, File file) {
-        RandomAccessFile raf = null;
-        try {
-            raf = new RandomAccessFile(file, "rw");
-        } catch (FileNotFoundException e) {
-            log.error(e);
-        }
+        RandomAccessFile raf = toRAF(file);
         if (raf == null) return;
 
         long p = 8L;// 固定的8byte文件头
@@ -247,10 +270,72 @@ public class BackupUtil {
         }
     }
 
-    @SuppressWarnings("ResultOfMethodCallIgnored")
-    public static MappedByteBuffer getMappedByteBuffer(AtomicInteger ai, Path path, AtomicReference<MappedByteBuffer> lastModify) {
+    public static synchronized void readFromDisk(Map<String, Object> collection, File file) {
+        RandomAccessFile raf = toRAF(file);
+        if (raf == null) return;
+
+        long p = 8L;// 固定的8byte文件头
         try {
-            File file = Path.of(path.toString(), ai.getAndIncrement() + ".db").toFile();
+            raf.seek(0);
+            p = raf.readLong();
+        } catch (IOException ignored) {
+        }
+        FileChannel channel = raf.getChannel();
+
+        int m = Integer.MAX_VALUE >> 6;// 裁剪的大小
+
+        int t = (int) Math.ceil((double) (p - 8) / m);// 经测试貌似有点儿慢
+
+        long len = 0;
+        long d = 0;
+
+        byte[] bytes = new byte[1024];
+        for (int i = 0; i < t; i++) {// 裁剪的部位刚好是一个byte[]的中间，而不是一个与另一个byte[]之间的空隙
+            long position = 8 + m * i - d;
+            long size = (m * (i + 1) > p - 8) ? p - 8 : m * (i + 1);
+            MappedByteBuffer mapped = null;// 跳过头位置
+            try {
+                mapped = channel.map(FileChannel.MapMode.READ_WRITE, position, size);
+            } catch (IOException e) {
+                e.printStackTrace();
+                log.error(e);
+            }
+            if (mapped == null) return;
+
+            int a = 0, b = 0, c = 0;
+            d = 0;
+            len = 0;
+            while (mapped.hasRemaining() /*&& mapped.remaining() >= 1024 * 10*/) {
+                len += a + b + c * 2;
+                try {
+                    int kLen = mapped.getInt();
+                    mapped.position(mapped.position() + kLen);// 跳过key
+                    int valLen = mapped.getInt();
+                    if (valLen > bytes.length) {
+                        bytes = new byte[valLen];
+                    }
+                    mapped.get(bytes, 0, valLen);
+                    Object value = KryoUtil.asObject(bytes, 0, valLen);
+                    LogEntry log = (LogEntry) value;
+                    collection.put(log.getKey(), log.getValue());
+                    a = kLen;
+                    b = valLen;
+                    c = 4;
+                } catch (BufferUnderflowException | IndexOutOfBoundsException | KryoException e) {
+                    d = size - len;
+                    break;
+                }
+            }
+        }
+    }
+
+    @SuppressWarnings("ResultOfMethodCallIgnored")
+    public static MappedByteBuffer getMappedByteBuffer(AtomicInteger fileNumber, Path path, AtomicReference<MappedByteBuffer> lastModify) {
+        try {
+            if (!path.toFile().exists()) {
+                path.toFile().mkdirs();
+            }
+            File file = Path.of(path.toString(), fileNumber.getAndIncrement() + ".db").toFile();
             file.createNewFile();
             RandomAccessFile raf = new RandomAccessFile(file, "rw");
             MappedByteBuffer mappedByteBuffer = raf.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, Integer.MAX_VALUE);

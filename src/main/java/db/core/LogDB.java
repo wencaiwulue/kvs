@@ -1,9 +1,12 @@
 package db.core;
 
+import db.core.storage.MapStorage;
+import db.core.storage.StorageEngine;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import raft.LogEntry;
 import util.BackupUtil;
+import util.FileUtil;
 import util.KryoUtil;
 
 import java.io.File;
@@ -13,7 +16,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
@@ -34,7 +36,7 @@ import static util.BackupUtil.write;
 public class LogDB {
     private static final Logger log = LogManager.getLogger(LogDB.class);
 
-    private final ConcurrentHashMap<String, Object> map;
+    private final StorageEngine engine;
     public volatile int lastLogIndex;
     public volatile int lastLogTerm;
 
@@ -42,14 +44,14 @@ public class LogDB {
     private final Lock readLock = this.lock.readLock();
     private final Lock writeLock = this.lock.writeLock();
 
-    public final Path logDBPath;
+    public final Path dir;
     public List<File> file;
     private final AtomicReference<MappedByteBuffer> lastModify = new AtomicReference<>();
-    private final AtomicInteger number = new AtomicInteger(0);
+    private final AtomicInteger fileNumber = new AtomicInteger(0);
 
-    public LogDB(String logDBPath) {
-        this.map = new ConcurrentHashMap<>(/*1 << 30*/); // 这是hashMap的容量
-        this.logDBPath = Path.of(logDBPath);
+    public LogDB(Path dir) {
+        this.engine = new MapStorage(this.writeLock); // 这是hashMap的容量
+        this.dir = dir;
         initAndReadIntoMemory();
     }
 
@@ -57,13 +59,16 @@ public class LogDB {
     public void initAndReadIntoMemory() {
         this.writeLock.lock();
         try {
-            File f = this.logDBPath.toFile();
-            if (!f.exists()) f.createNewFile();
+            File f = this.dir.toFile();
+            if (!f.exists()) {
+                FileUtil.emptyFolder(f);
+            }
+
             File[] files = f.listFiles();
             List<File> dbFiles = new ArrayList<>();
 
             if (files == null || files.length == 0) {
-                File temp = Path.of(f.getPath(), 1 + ".db").toFile();
+                File temp = Path.of(f.getPath(), fileNumber.getAndIncrement() + ".db").toFile();
                 if (!temp.exists()) temp.createNewFile();
                 dbFiles.add(temp);
             } else {
@@ -75,7 +80,7 @@ public class LogDB {
             this.lastModify.set(buffer);
 
             for (File dbFile : dbFiles) {
-                BackupUtil.readFromDisk(this.map, dbFile);
+                BackupUtil.readFromDisk(this.engine, dbFile);
             }
         } catch (IOException e) {
             log.error(e);
@@ -102,7 +107,7 @@ public class LogDB {
                     finalBuffer.force();
                     break;
                 } else {
-                    lastModify.set(BackupUtil.getMappedByteBuffer(number, this.logDBPath, this.lastModify));
+                    lastModify.set(BackupUtil.getMappedByteBuffer(fileNumber, this.dir, this.lastModify));
                 }
             }
         } catch (Exception e) {
@@ -113,7 +118,7 @@ public class LogDB {
     }
 
     public Object get(String key) {
-        return this.map.get(key);
+        return this.engine.get(key);
     }
 
     public void save(List<LogEntry> logs) {
@@ -124,13 +129,13 @@ public class LogDB {
 
     public void set(String key, Object value) {
         if (key == null || value == null) return;
-        this.map.put(key, value);
+        this.engine.set(key, value);
         byte[] kb = key.getBytes();
         byte[] vb = KryoUtil.asByteArray(value);
         this.writeDataToDisk(new CacheBuffer.Item(kb, vb));
     }
 
     public void remove(String key) {
-        this.map.remove(key);
+        this.engine.remove(key);
     }
 }
