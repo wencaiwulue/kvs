@@ -39,9 +39,8 @@ public class BackupUtil {
      * -------------------------------------------------------------------------
      * 固定的8个byte的头，用于存储实际使用大小
      * */
-    public static synchronized void snapshotToDisk(Map<String, Object> map, Path path, AtomicReference<MappedByteBuffer> lastModify) {
-        AtomicInteger ai = new AtomicInteger(0);
-        getMappedByteBuffer(ai, path, lastModify);
+    public static synchronized void snapshotToDisk(Map<String, Object> map, Path path, AtomicReference<MappedByteBuffer> lastModify, AtomicInteger fileNumber) {
+        getMappedByteBuffer(fileNumber, path, lastModify);
 
         AtomicInteger l = new AtomicInteger(0);// 本次写入的量
         Spliterator<Map.Entry<String, Object>> entrySpliterator = map.entrySet().spliterator().trySplit();
@@ -61,16 +60,15 @@ public class BackupUtil {
                     finalBuffer.putLong(0, 8 + l.get());// 更新头的长度，也就是目前文件写到的位置
                     finalBuffer.force();
                     l.set(0);
-                    lastModify.set(getMappedByteBuffer(ai, path, lastModify));
+                    lastModify.set(getMappedByteBuffer(fileNumber, path, lastModify));
                 }
             }
         });
     }
 
 
-    public static synchronized void snapshotToDisk(StorageEngine map, Path path, AtomicReference<MappedByteBuffer> lastModify) {
-        AtomicInteger ai = new AtomicInteger(0);
-        getMappedByteBuffer(ai, path, lastModify);
+    public static synchronized void snapshotToDisk(StorageEngine map, Path path, AtomicReference<MappedByteBuffer> lastModify, AtomicInteger fileNumber) {
+        getMappedByteBuffer(fileNumber, path, lastModify);
 
         AtomicInteger l = new AtomicInteger(0);// 本次写入的量
         map.iterator().forEachRemaining(e -> {
@@ -90,7 +88,7 @@ public class BackupUtil {
                     finalBuffer.putLong(0, 8 + l.get());// 更新头的长度，也就是目前文件写到的位置
                     finalBuffer.force();
                     l.set(0);
-                    lastModify.set(getMappedByteBuffer(ai, path, lastModify));
+                    lastModify.set(getMappedByteBuffer(fileNumber, path, lastModify));
                 }
             }
         });
@@ -330,12 +328,12 @@ public class BackupUtil {
     }
 
     @SuppressWarnings("ResultOfMethodCallIgnored")
-    public static MappedByteBuffer getMappedByteBuffer(AtomicInteger fileNumber, Path path, AtomicReference<MappedByteBuffer> lastModify) {
+    public static MappedByteBuffer getMappedByteBuffer(AtomicInteger fileNumber, Path dir, AtomicReference<MappedByteBuffer> lastModify) {
         try {
-            if (!path.toFile().exists()) {
-                path.toFile().mkdirs();
+            if (!dir.toFile().exists()) {
+                dir.toFile().mkdirs();
             }
-            File file = Path.of(path.toString(), fileNumber.getAndIncrement() + ".db").toFile();
+            File file = Path.of(dir.toString(), fileNumber.getAndIncrement() + ".db").toFile();
             file.createNewFile();
             RandomAccessFile raf = new RandomAccessFile(file, "rw");
             MappedByteBuffer mappedByteBuffer = raf.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, Integer.MAX_VALUE);
@@ -376,7 +374,7 @@ public class BackupUtil {
         }
         System.out.println("存入map花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
         start = System.nanoTime();
-        snapshotToDisk(map, Path.of(path), new AtomicReference<>(mappedByteBuffer));
+        snapshotToDisk(map, Path.of(path).getParent(), new AtomicReference<>(mappedByteBuffer), new AtomicInteger(0));
         System.out.println("写入磁盘花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
         start = System.nanoTime();
         readFromDisk(map1, file);

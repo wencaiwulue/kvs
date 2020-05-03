@@ -113,7 +113,7 @@ public class DB {
                 if (this.shouldToSnapshot()) {
                     this.lock.writeLock().lock();
                     try {
-                        BackupUtil.snapshotToDisk(this.storage, Path.of(dir.toString(), "snapshot"), this.lastModify);
+                        BackupUtil.snapshotToDisk(this.storage, Path.of(dir.toString(), "snapshot"), this.lastModify, this.fileNumber);
 
                         // todo 需要将snapshot目录移动到db目录
                     } finally {
