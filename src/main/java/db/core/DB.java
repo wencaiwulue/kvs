@@ -83,6 +83,7 @@ public class DB {
             }
 
             File file = dbFiles.get(dbFiles.size() - 1);
+            this.fileNumber.set(dbFiles.size() - 1);// 要注意磁盘可能已经有数据块了
             this.lastModify.set(BackupUtil.getMappedByteBuffer(file));
 
             for (File dbFile : dbFiles) {

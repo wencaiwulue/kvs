@@ -68,14 +68,16 @@ public class LogDB {
             List<File> dbFiles = new ArrayList<>();
 
             if (files == null || files.length == 0) {
-                File temp = Path.of(f.getPath(), fileNumber.getAndIncrement() + ".db").toFile();
-                if (!temp.exists()) temp.createNewFile();
-                dbFiles.add(temp);
+                File file = Path.of(f.getPath(), fileNumber.getAndIncrement() + ".db").toFile();
+                if (!file.exists()) file.createNewFile();
+                dbFiles.add(file);
             } else {
                 dbFiles.addAll(Arrays.stream(files).collect(Collectors.toList()));
             }
 
             File file = dbFiles.get(dbFiles.size() - 1);
+            this.fileNumber.set(dbFiles.size() - 1);
+
             MappedByteBuffer buffer = BackupUtil.getMappedByteBuffer(file);
             this.lastModify.set(buffer);
 
