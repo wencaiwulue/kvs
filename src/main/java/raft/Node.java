@@ -70,8 +70,8 @@ public class Node implements Runnable {
     private List<Processor> processors;
     private List<Processor> KVProcessors;
 
-    private Runnable heartbeat;
-    public Runnable elect;
+    private Runnable heartbeatTask;
+    public Runnable electTask;
 
     public Node(NodeAddress address, Set<NodeAddress> allNodeAddresses) {
         this.address = address;
@@ -85,7 +85,7 @@ public class Node implements Runnable {
 
     @Override
     public void run() {
-        this.elect = () -> {
+        this.electTask = () -> {
             if (!this.start) {
                 return;
             }
@@ -97,15 +97,15 @@ public class Node implements Runnable {
             // electing start
             elect();
         };
-        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(elect, 0, 10, TimeUnit.MILLISECONDS);
+        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(electTask, 0, 10, TimeUnit.MILLISECONDS);
 
-        this.heartbeat = () -> {
+        this.heartbeatTask = () -> {
             if (!this.start) {
                 return;
             }
 
             if (this.nextHeartbeatTime > System.nanoTime()) {
-                return; // sleep until it's time to heartbeat
+                return;
             }
 
             if (isLeader()) {// 如果自己是主领导，就需要给各个节点发送心跳包
@@ -136,7 +136,7 @@ public class Node implements Runnable {
 //                System.out.println("成功给推迟选举");
             }
         };
-        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(this.heartbeat, 0, 10, TimeUnit.MILLISECONDS);
+        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(this.heartbeatTask, 0, 10, TimeUnit.MILLISECONDS);
         this.start = true;
     }
 
@@ -189,7 +189,7 @@ public class Node implements Runnable {
                 this.leaderAddress = this.address;
                 this.role = Role.LEADER;
                 this.nextHeartbeatTime = -1;// 立即心跳
-                ThreadUtil.getThreadPool().execute(this.heartbeat);
+                ThreadUtil.getThreadPool().execute(this.heartbeatTask);
             } else {
                 log.error("elect failed");
             }

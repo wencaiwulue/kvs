@@ -39,8 +39,8 @@ public class BackupUtil {
      * -------------------------------------------------------------------------
      * 固定的8个byte的头，用于存储实际使用大小
      * */
-    public static synchronized void snapshotToDisk(Map<String, Object> map, Path path, AtomicReference<MappedByteBuffer> lastModify, AtomicInteger fileNumber) {
-        getMappedByteBuffer(fileNumber, path, lastModify);
+    public static synchronized void snapshotToDisk(Map<String, Object> map, Path dir, AtomicReference<MappedByteBuffer> lastModify, AtomicInteger fileNumber) {
+        getMappedByteBuffer(fileNumber, dir, lastModify);
 
         AtomicInteger l = new AtomicInteger(0);// 本次写入的量
         Spliterator<Map.Entry<String, Object>> entrySpliterator = map.entrySet().spliterator().trySplit();
@@ -60,15 +60,15 @@ public class BackupUtil {
                     finalBuffer.putLong(0, 8 + l.get());// 更新头的长度，也就是目前文件写到的位置
                     finalBuffer.force();
                     l.set(0);
-                    lastModify.set(getMappedByteBuffer(fileNumber, path, lastModify));
+                    lastModify.set(getMappedByteBuffer(fileNumber, dir, lastModify));
                 }
             }
         });
     }
 
 
-    public static synchronized void snapshotToDisk(StorageEngine map, Path path, AtomicReference<MappedByteBuffer> lastModify, AtomicInteger fileNumber) {
-        getMappedByteBuffer(fileNumber, path, lastModify);
+    public static synchronized void snapshotToDisk(StorageEngine map, Path dir, AtomicReference<MappedByteBuffer> lastModify, AtomicInteger fileNumber) {
+        getMappedByteBuffer(fileNumber, dir, lastModify);
 
         AtomicInteger l = new AtomicInteger(0);// 本次写入的量
         map.iterator().forEachRemaining(e -> {
@@ -88,7 +88,7 @@ public class BackupUtil {
                     finalBuffer.putLong(0, 8 + l.get());// 更新头的长度，也就是目前文件写到的位置
                     finalBuffer.force();
                     l.set(0);
-                    lastModify.set(getMappedByteBuffer(fileNumber, path, lastModify));
+                    lastModify.set(getMappedByteBuffer(fileNumber, dir, lastModify));
                 }
             }
         });
@@ -104,7 +104,7 @@ public class BackupUtil {
         }
     }
 
-    public static synchronized void appendToDisk(CacheBuffer<CacheBuffer.Item> pipeline, int size, Path path, AtomicReference<MappedByteBuffer> lastModify, AtomicInteger fileNumber) {
+    public static synchronized void appendToDisk(CacheBuffer<CacheBuffer.Item> pipeline, int size, Path dir, AtomicReference<MappedByteBuffer> lastModify, AtomicInteger fileNumber) {
         if (pipeline.isEmpty()) return;
         MappedByteBuffer mapped = lastModify.get();
         if (mapped == null) return;
@@ -128,7 +128,7 @@ public class BackupUtil {
                         byteBuffer.force();
                         byteBuffer.putLong(0, p + length);// 更新头的长度
                         byteBuffer.force();
-                        getMappedByteBuffer(fileNumber, path, lastModify);
+                        getMappedByteBuffer(fileNumber, dir, lastModify);
                     }
                 }
             }

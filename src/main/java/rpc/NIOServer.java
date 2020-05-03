@@ -120,8 +120,7 @@ public class NIOServer implements Runnable {
             return;
         }
 
-        SocketChannel socketChannel;
-        socketChannel = (SocketChannel) key.attach(null);
+        SocketChannel socketChannel = (SocketChannel) key.attach(null);
         if (socketChannel != null) {
             if (socketChannel.isConnected() && socketChannel.isOpen()) {
                 try {

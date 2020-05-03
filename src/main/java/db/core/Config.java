@@ -13,6 +13,7 @@ import java.time.Duration;
  * @since 5/3/2020 16:21
  */
 public interface Config {
+
     int PORT = Math.max(8000, ParseUtil.parseInt(System.getProperty("port")));
     Path DB_DIR = Path.of("C:\\Users\\89570\\Documents\\kvs_" + PORT + "\\db");
     Path LOG_DIR = Path.of("C:\\Users\\89570\\Documents\\kvs_" + PORT + "\\log");
@@ -26,4 +27,5 @@ public interface Config {
     // 低于这个值就停止写入，因为管道是不停写入的，所以基本不会出现管道为空的情况
 
     int MAX_FILE_SIZE = Integer.MAX_VALUE;// 大概文件大小为2gb
+
 }

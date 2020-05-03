@@ -52,7 +52,7 @@ public class DB {
     public final Path dir;
     private final AtomicReference<MappedByteBuffer> lastModify = new AtomicReference<>();
     private final AtomicInteger fileNumber = new AtomicInteger(0);
-    // 可以判断是否存在kvs中，
+    // 可以判断是否存在kvs中，但是不能删除，这点儿是不是不大靠谱
     @SuppressWarnings("UnstableApiUsage")
     private static final BloomFilter<String> filter = BloomFilter.create(Funnels.stringFunnel(StandardCharsets.UTF_8), Integer.MAX_VALUE);
 
@@ -97,7 +97,7 @@ public class DB {
     }
 
     public void writeDataToDisk() {
-        Runnable backup = () -> {
+        Runnable backupTask = () -> {
             if (Config.BACKUP_MODE == 0 || Config.BACKUP_MODE == 2) {
                 if (this.buffer.shouldToWriteOut() || this.shouldToAppend()) {
                     this.writeLock.lock();
@@ -124,12 +124,12 @@ public class DB {
                 }
             }
         };
-        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(backup, 0, Config.APPEND_RATE.toNanos() / 2, TimeUnit.NANOSECONDS);// 没半秒检查一次
+        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(backupTask, 0, Config.APPEND_RATE.toNanos() / 2, TimeUnit.NANOSECONDS);// 没半秒检查一次
     }
 
     // check key expire every seconds
     public void checkExpireKey() {
-        Runnable check = () -> {
+        Runnable checkExpireTask = () -> {
             while (!this.expireKeys.isEmpty()) {
                 ExpireKey expireKey = this.expireKeys.peek();
                 if (expireKey.isExpired()) {
@@ -146,7 +146,7 @@ public class DB {
             }
         };
 
-        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(check, 0, 1, TimeUnit.SECONDS);
+        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(checkExpireTask, 0, 1, TimeUnit.SECONDS);
     }
 
     public boolean shouldToSnapshot() {
