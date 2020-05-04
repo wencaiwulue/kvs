@@ -38,7 +38,7 @@ public class StateMachine {
     public static void writeLogToDB(Node leader, LogEntry entry) {
 
         for (Service service : services) {
-            if (service.support(entry.getOperation())) {
+            if (service.supports(entry.getOperation())) {
                 service.service(leader, entry);
                 return;
             }

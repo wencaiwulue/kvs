@@ -50,7 +50,7 @@ public class LogDB {
     private final AtomicInteger fileNumber = new AtomicInteger(0);
 
     public LogDB(Path dir) {
-        this.engine = new MapStorage(this.writeLock); // 这是hashMap的容量
+        this.engine = new MapStorage(); // 这是hashMap的容量
         this.dir = dir;
         initAndReadIntoMemory();
     }
@@ -78,7 +78,7 @@ public class LogDB {
             File file = dbFiles.get(dbFiles.size() - 1);
             this.fileNumber.set(dbFiles.size() - 1);
 
-            MappedByteBuffer buffer = BackupUtil.getMappedByteBuffer(file);
+            MappedByteBuffer buffer = BackupUtil.fileMapped(file);
             this.lastModify.set(buffer);
 
             for (File dbFile : dbFiles) {
@@ -109,7 +109,7 @@ public class LogDB {
                     finalBuffer.force();
                     break;
                 } else {
-                    lastModify.set(BackupUtil.getMappedByteBuffer(fileNumber, this.dir, this.lastModify));
+                    lastModify.set(BackupUtil.createNewFileAndMapped(fileNumber, this.dir));
                 }
             }
         } catch (Exception e) {

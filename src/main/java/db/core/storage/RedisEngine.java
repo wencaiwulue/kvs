@@ -12,11 +12,15 @@ import java.util.Set;
  * @author naison
  * @since 5/3/2020 18:32
  */
+@SuppressWarnings("unchecked")
 public class RedisEngine implements StorageEngine {
     private static final Jedis jedis;
 
     static {
         jedis = new Jedis("localhost", 6379);
+    }
+
+    public RedisEngine() {
     }
 
     @Override

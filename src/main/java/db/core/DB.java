@@ -52,13 +52,13 @@ public class DB {
     public final Path dir;
     private final AtomicReference<MappedByteBuffer> lastModify = new AtomicReference<>();
     private final AtomicInteger fileNumber = new AtomicInteger(0);
-    // 可以判断是否存在kvs中，但是不能删除，这点儿是不是不大靠谱
+    // 可以判断是否存在kvs中，但是不能删除，这点儿是不是不大靠谱, 实际上可以再加一个bitmap, 用于存储某个位被置1的次数，这样的方案解决
     @SuppressWarnings("UnstableApiUsage")
     private static final BloomFilter<String> filter = BloomFilter.create(Funnels.stringFunnel(StandardCharsets.UTF_8), Integer.MAX_VALUE);
 
     public DB(Path dir) {
         this.dir = dir;
-        this.storage = new MapStorage(this.writeLock);
+        this.storage = new MapStorage();
         this.expireKeys = new PriorityBlockingQueue<>(11, ExpireKey::compareTo);
         this.initAndReadIntoMemory();
         this.checkExpireKey();
@@ -84,7 +84,7 @@ public class DB {
 
             File file = dbFiles.get(dbFiles.size() - 1);
             this.fileNumber.set(dbFiles.size() - 1);// 要注意磁盘可能已经有数据块了
-            this.lastModify.set(BackupUtil.getMappedByteBuffer(file));
+            this.lastModify.set(BackupUtil.fileMapped(file));
 
             for (File dbFile : dbFiles) {
                 BackupUtil.readFromDisk(this.storage, dbFile);
@@ -114,9 +114,7 @@ public class DB {
                 if (this.shouldToSnapshot()) {
                     this.lock.writeLock().lock();
                     try {
-                        BackupUtil.snapshotToDisk(this.storage, Path.of(dir.toString(), "snapshot"), this.lastModify, this.fileNumber);
-
-                        // todo 需要将snapshot目录移动到db目录
+                        BackupUtil.snapshotToDisk(this.storage, this.dir, this.lastModify, this.fileNumber);
                     } finally {
                         this.lock.writeLock().unlock();
                     }
@@ -172,14 +170,19 @@ public class DB {
     }
 
     public void set(String key, Object value, int timeout, TimeUnit unit) {
-        if (key == null || value == null) return;
-        this.storage.set(key, value);
-        if (timeout > 0) {
-            this.expireKeys.add(new ExpireKey(key, timeout, unit));
+        this.writeLock.lock();
+        try {
+            if (key == null || value == null) return;
+            this.storage.set(key, value);
+            if (timeout > 0) {
+                this.expireKeys.add(new ExpireKey(key, timeout, unit));
+            }
+            byte[] kb = key.getBytes();
+            byte[] vb = KryoUtil.asByteArray(value);
+            this.buffer.offer(new CacheBuffer.Item(kb, vb));
+        } finally {
+            this.writeLock.unlock();
         }
-        byte[] kb = key.getBytes();
-        byte[] vb = KryoUtil.asByteArray(value);
-        this.buffer.offer(new CacheBuffer.Item(kb, vb));
     }
 
     public void remove(String key) {
@@ -192,8 +195,13 @@ public class DB {
     }
 
     public void expireKey(String key, int expire, TimeUnit unit) {
-        this.expireKeys.remove(new ExpireKey(key, -1, unit));
-        this.expireKeys.add(new ExpireKey(key, expire, unit));
+        this.writeLock.lock();
+        try {
+            this.expireKeys.remove(new ExpireKey(key, -1, unit));
+            this.expireKeys.add(new ExpireKey(key, expire, unit));
+        } finally {
+            this.writeLock.unlock();
+        }
     }
 
 

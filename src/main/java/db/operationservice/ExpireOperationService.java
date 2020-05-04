@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class ExpireOperationService implements Service {
     @Override
-    public boolean support(CURDOperation operation) {
+    public boolean supports(CURDOperation operation) {
         return CURDOperation.expire.equals(operation);
     }
 

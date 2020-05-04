@@ -10,7 +10,7 @@ import raft.enums.CURDOperation;
  */
 public interface Service {
 
-    boolean support(CURDOperation operation);
+    boolean supports(CURDOperation operation);
 
     boolean service(Node node, LogEntry logEntry);
 

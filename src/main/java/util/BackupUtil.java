@@ -3,6 +3,7 @@ package util;
 
 import com.esotericsoftware.kryo.KryoException;
 import db.core.CacheBuffer;
+import db.core.Config;
 import db.core.storage.StorageEngine;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -40,7 +41,7 @@ public class BackupUtil {
      * 固定的8个byte的头，用于存储实际使用大小
      * */
     public static synchronized void snapshotToDisk(Map<String, Object> map, Path dir, AtomicReference<MappedByteBuffer> lastModify, AtomicInteger fileNumber) {
-        getMappedByteBuffer(fileNumber, dir, lastModify);
+        lastModify.set(createNewFileAndMapped(fileNumber, dir));
 
         AtomicInteger l = new AtomicInteger(0);// 本次写入的量
         Spliterator<Map.Entry<String, Object>> entrySpliterator = map.entrySet().spliterator().trySplit();
@@ -60,7 +61,7 @@ public class BackupUtil {
                     finalBuffer.putLong(0, 8 + l.get());// 更新头的长度，也就是目前文件写到的位置
                     finalBuffer.force();
                     l.set(0);
-                    lastModify.set(getMappedByteBuffer(fileNumber, dir, lastModify));
+                    lastModify.set(createNewFileAndMapped(fileNumber, dir));
                 }
             }
         });
@@ -68,7 +69,7 @@ public class BackupUtil {
 
 
     public static synchronized void snapshotToDisk(StorageEngine map, Path dir, AtomicReference<MappedByteBuffer> lastModify, AtomicInteger fileNumber) {
-        getMappedByteBuffer(fileNumber, dir, lastModify);
+        lastModify.set(createNewFileAndMapped(fileNumber, dir));
 
         AtomicInteger l = new AtomicInteger(0);// 本次写入的量
         map.iterator().forEachRemaining(e -> {
@@ -88,7 +89,7 @@ public class BackupUtil {
                     finalBuffer.putLong(0, 8 + l.get());// 更新头的长度，也就是目前文件写到的位置
                     finalBuffer.force();
                     l.set(0);
-                    lastModify.set(getMappedByteBuffer(fileNumber, dir, lastModify));
+                    lastModify.set(createNewFileAndMapped(fileNumber, dir));
                 }
             }
         });
@@ -128,7 +129,7 @@ public class BackupUtil {
                         byteBuffer.force();
                         byteBuffer.putLong(0, p + length);// 更新头的长度
                         byteBuffer.force();
-                        getMappedByteBuffer(fileNumber, dir, lastModify);
+                        lastModify.set(createNewFileAndMapped(fileNumber, dir));
                     }
                 }
             }
@@ -159,8 +160,9 @@ public class BackupUtil {
         } catch (IOException ignored) {
         }
         FileChannel channel = raf.getChannel();
+        p = Math.max(8, p);
 
-        int m = Integer.MAX_VALUE >> 6;// 裁剪的大小
+        int m = Config.MAX_FILE_SIZE >> 6;// 裁剪的大小
 
         int t = (int) Math.ceil((double) (p - 8) / m);// 经测试貌似有点儿慢
 
@@ -220,9 +222,10 @@ public class BackupUtil {
             p = raf.readLong();
         } catch (IOException ignored) {
         }
+        p = Math.max(8, p);
         FileChannel channel = raf.getChannel();
 
-        int m = Integer.MAX_VALUE >> 6;// 裁剪的大小
+        int m = Config.MAX_FILE_SIZE >> 6;// 裁剪的大小
 
         int t = (int) Math.ceil((double) (p - 8) / m);// 经测试貌似有点儿慢
 
@@ -278,9 +281,10 @@ public class BackupUtil {
             p = raf.readLong();
         } catch (IOException ignored) {
         }
+        p = Math.max(8, p);
         FileChannel channel = raf.getChannel();
 
-        int m = Integer.MAX_VALUE >> 6;// 裁剪的大小
+        int m = Config.MAX_FILE_SIZE >> 6;// 裁剪的大小
 
         int t = (int) Math.ceil((double) (p - 8) / m);// 经测试貌似有点儿慢
 
@@ -328,28 +332,25 @@ public class BackupUtil {
     }
 
     @SuppressWarnings("ResultOfMethodCallIgnored")
-    public static MappedByteBuffer getMappedByteBuffer(AtomicInteger fileNumber, Path dir, AtomicReference<MappedByteBuffer> lastModify) {
+    public static MappedByteBuffer createNewFileAndMapped(AtomicInteger fileNumber, Path dir) {
         try {
-            if (!dir.toFile().exists()) {
-                dir.toFile().mkdirs();
+            File file = dir.toFile();
+            if (!file.exists()) {
+                file.mkdirs();
             }
-            File file = Path.of(dir.toString(), fileNumber.getAndIncrement() + ".db").toFile();
+            file = Path.of(dir.toString(), fileNumber.getAndIncrement() + ".db").toFile();
             file.createNewFile();
-            RandomAccessFile raf = new RandomAccessFile(file, "rw");
-            MappedByteBuffer mappedByteBuffer = raf.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, Integer.MAX_VALUE);
-            mappedByteBuffer.position(8);
-            lastModify.set(mappedByteBuffer);
-            return mappedByteBuffer;
+            return fileMapped(file);
         } catch (Exception e) {
             e.printStackTrace();
             return null;
         }
     }
 
-    public static MappedByteBuffer getMappedByteBuffer(File file) {
+    public static MappedByteBuffer fileMapped(File file) {
         try {
             RandomAccessFile raf = new RandomAccessFile(file, "rw");
-            MappedByteBuffer buffer = raf.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, Integer.MAX_VALUE);
+            MappedByteBuffer buffer = raf.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, Config.MAX_FILE_SIZE);
             long p = buffer.getLong(0);
             buffer.position((int) Math.max(8, p));
             return buffer;
@@ -363,7 +364,7 @@ public class BackupUtil {
         String path = "C:\\Users\\89570\\Documents\\test3.txt";
         File file = Path.of(path).toFile();
         if (!file.exists()) file.createNewFile();
-        MappedByteBuffer mappedByteBuffer = getMappedByteBuffer(file);
+        MappedByteBuffer mappedByteBuffer = fileMapped(file);
         int n =/*1 << 30*/ 1000 * 1000 * 5;
         ConcurrentHashMap<String, Object> map = new ConcurrentHashMap<>(n);
         ConcurrentHashMap<String, Object> map1 = new ConcurrentHashMap<>(n);

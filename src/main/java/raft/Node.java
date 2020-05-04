@@ -51,8 +51,6 @@ public class Node implements Runnable {
     private volatile int lastAppliedTerm = 0;
     public volatile long nextIndex;
 
-    final long heartBeatRate = 20;// the last and this heart beat difference is 150ms, also means if one node lastHeartBeat + heartBeatRate < currentNanoTime, leader dead. should elect leader
-    final long electRate = 400;// the last and this heart beat difference is 150ms, also means if one node lastHeartBeat + heartBeatRate < currentNanoTime, leader dead. should elect leader
     public volatile long nextElectTime = this.delayElectTime();// 下次选举时间，总是会因为心跳而推迟，会在因为主leader down后开始选举
     public volatile long nextHeartbeatTime /*= System.nanoTime() + this.heartBeatRate*/;// 下次心跳时间。对leader有用
     //150ms -- 300ms randomized  超时时间,选举的时候，如果主节点挂了，则所有的节点开始timeout，然后最先timeout结束的节点变为candidate，
@@ -114,9 +112,10 @@ public class Node implements Runnable {
                     Response response = Client.doRequest(remote, new AppendEntriesRequest(Collections.emptyList(), this.address, this.currentTerm, this.lastAppliedTerm, this.lastAppliedIndex.intValue(), this.committedIndex));
 
                     // install snapshot
-                    if (response instanceof ErrorResponse) {
+                    if (response instanceof ErrorResponse) {// todo 这里约定的是如果心跳包回复ErrorResponse, 说明是out的节点，需要安装更新
                         long size = 0;
                         try {
+                            // todo 这里需要根据index确定是哪一个文件，并且index要做到全局递增，这个怎么办？
                             size = FileChannel.open(this.logdb.file.get(0).toPath(), StandardOpenOption.READ).size();
                         } catch (ClosedChannelException e) {
                             log.error("who close the channel !!");
@@ -132,7 +131,7 @@ public class Node implements Runnable {
                     log.error("收到follower:{}的心跳回包", remote.getSocketAddress().getPort());
                 }
                 this.nextElectTime = this.delayElectTime();
-                this.nextHeartbeatTime = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(this.heartBeatRate);
+                this.nextHeartbeatTime = System.nanoTime() + Config.HEARTBEAT_RATE.toNanos();
 //                System.out.println("成功给推迟选举");
             }
         };
@@ -178,7 +177,7 @@ public class Node implements Runnable {
                 };
                 ThreadUtil.getThreadPool().execute(r);
             }
-            latch.await(this.electRate, TimeUnit.MILLISECONDS);
+            latch.await(Config.ELECT_RATE.toMillis(), TimeUnit.MILLISECONDS);
             if (fail.getAcquire()) {
                 return;
             }
@@ -247,7 +246,7 @@ public class Node implements Runnable {
     }
 
     public long delayElectTime() {
-        return System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(this.electRate + ThreadLocalRandom.current().nextInt(100));
+        return System.nanoTime() + Config.ELECT_RATE.toNanos() + TimeUnit.MILLISECONDS.toNanos(ThreadLocalRandom.current().nextInt(100));// randomize 0--100 ms
     }
 
     /*

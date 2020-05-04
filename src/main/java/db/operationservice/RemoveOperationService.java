@@ -10,7 +10,7 @@ import raft.enums.CURDOperation;
  */
 public class RemoveOperationService implements Service {
     @Override
-    public boolean support(CURDOperation operation) {
+    public boolean supports(CURDOperation operation) {
         return CURDOperation.remove.equals(operation);
     }
 
