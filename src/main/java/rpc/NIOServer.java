@@ -10,6 +10,7 @@ import util.ThreadUtil;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.SocketException;
 import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
@@ -165,7 +166,7 @@ public class NIOServer implements Runnable {
             if (channel != null) {
                 synchronized (channel.toString().intern()) {// 一个channel不能同时被两个线程读取，不然内容回错乱，但是这里会不会有更好的方法呢？
                     try {
-                        ByteBuffer byteBuffer = ByteBuffer.allocate(4);
+                        ByteBuffer byteBuffer = ByteBuffer.allocateDirect(4);
                         int read = channel.read(byteBuffer);
                         if (read > 0) {// 客户端主动断开链接，也会发送一个读事件 返回值为-1
                             try {
@@ -183,6 +184,22 @@ public class NIOServer implements Runnable {
                                 log.error(oom);
                             }
                         }
+                    } catch (SocketException e) {
+                        key.channel();
+                        try {
+                            channel.close();
+                        } catch (IOException ioException) {
+                            ioException.printStackTrace();
+                        }
+                        log.error(e.getMessage());
+                    } catch (ClosedChannelException e) {
+                        key.channel();
+                        try {
+                            channel.close();
+                        } catch (IOException ioException) {
+                            ioException.printStackTrace();
+                        }
+                        log.error("channel关闭了");
                     } catch (IOException e) {
                         log.error("出错了，关闭channel", e);
                         try {

@@ -54,7 +54,7 @@ public class DB {
     private final AtomicInteger fileNumber = new AtomicInteger(0);
     // 可以判断是否存在kvs中，但是不能删除，这点儿是不是不大靠谱, 实际上可以再加一个bitmap, 用于存储某个位被置1的次数，这样的方案解决
     @SuppressWarnings("UnstableApiUsage")
-    private static final BloomFilter<String> filter = BloomFilter.create(Funnels.stringFunnel(StandardCharsets.UTF_8), Integer.MAX_VALUE);
+//    private static final BloomFilter<String> filter = BloomFilter.create(Funnels.stringFunnel(StandardCharsets.UTF_8), Integer.MAX_VALUE);
 
     public DB(Path dir) {
         this.dir = dir;
@@ -102,7 +102,7 @@ public class DB {
                 if (this.buffer.shouldToWriteOut() || this.shouldToAppend()) {
                     this.writeLock.lock();
                     try {
-                        BackupUtil.appendToDisk(this.buffer, this.buffer.theNumberOfShouldToBeWritten(), this.dir, this.lastModify, this.fileNumber);
+//                        BackupUtil.appendToDisk(this.buffer, this.buffer.theNumberOfShouldToBeWritten(), this.dir, this.lastModify, this.fileNumber);
                     } finally {
                         this.writeLock.unlock();
                     }
@@ -114,7 +114,7 @@ public class DB {
                 if (this.shouldToSnapshot()) {
                     this.lock.writeLock().lock();
                     try {
-                        BackupUtil.snapshotToDisk(this.storage, this.dir, this.lastModify, this.fileNumber);
+//                        BackupUtil.snapshotToDisk(this.storage, this.dir, this.lastModify, this.fileNumber);
                     } finally {
                         this.lock.writeLock().unlock();
                     }

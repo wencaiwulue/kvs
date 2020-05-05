@@ -10,9 +10,7 @@ import java.util.concurrent.LinkedBlockingQueue;
  * @since 4/28/2020 16:39
  */
 public class CacheBuffer<T> {
-    // 如果超过这个阈值，就启动备份写入流程
-    // 低于这个值就停止写入，因为管道是不停写入的，所以基本不会出现管道为空的情况
-    private final Range<Integer> threshold;
+    private final Range<Integer> threshold;// 如果超过这个阈值，就启动备份写出流程, 低于这个值就停止写出
     private final BlockingQueue<T> buffer;// 这里是缓冲区，也就是每隔一段时间备份append的数据，或者这个buffer满了就备份数据
 
     public CacheBuffer(int size, Range<Integer> range) {

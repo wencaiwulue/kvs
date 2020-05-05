@@ -10,8 +10,10 @@ import util.ThreadUtil;
 
 import java.io.IOException;
 import java.net.ConnectException;
+import java.net.SocketException;
 import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
+import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
@@ -33,7 +35,7 @@ public class Client {
 
     private static final ConcurrentHashMap<Integer, Response> responseMap = new ConcurrentHashMap<>();
     private static final LinkedBlockingDeque<SocketRequest> requestTask = new LinkedBlockingDeque<>();
-    private static final Thread writeRequestTask = new Thread(Client::writeRequest);
+    private static final Thread writeRequestTask = new Thread(Client::writeRequest, "rpc-write-out");
 
     static {
         try {
@@ -60,7 +62,7 @@ public class Client {
                         channel.register(selector, SelectionKey.OP_READ);
                         connections.put(remote, channel);
                     } catch (ConnectException e) {
-                        log.error("remote:{}, 连接失败, message:{}。", remote.getSocketAddress().getPort(), e.getMessage());
+                        log.error("remote: {}, 连接失败, message: {}。", remote.getSocketAddress().getPort(), e.getMessage());
                         remote.alive = false;
                     } catch (IOException e) {
                         log.error(e);
@@ -147,6 +149,22 @@ public class Client {
                         }
                     }
 
+                } catch (SocketException e) {
+                    key.channel();
+                    try {
+                        channel.close();
+                    } catch (IOException ioException) {
+                        ioException.printStackTrace();
+                    }
+                    log.error(e.getMessage());
+                } catch (ClosedChannelException e) {
+                    key.channel();
+                    try {
+                        channel.close();
+                    } catch (IOException ioException) {
+                        ioException.printStackTrace();
+                    }
+                    log.error("channel关闭了");
                 } catch (IOException e) {
                     e.printStackTrace();
                     if (e.getMessage().contains("An existing connection was forcibly closed by the remote host")) {
