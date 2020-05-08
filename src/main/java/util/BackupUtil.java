@@ -19,6 +19,7 @@ import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Spliterator;
 import java.util.concurrent.ConcurrentHashMap;
@@ -41,7 +42,10 @@ public class BackupUtil {
      * 固定的8个byte的头，用于存储实际使用大小
      * */
     public static synchronized void snapshotToDisk(Map<String, Object> map, Path dir, AtomicReference<MappedByteBuffer> lastModify, AtomicInteger fileNumber) {
-        lastModify.set(createNewFileAndMapped(fileNumber, dir));
+        if (map.isEmpty()) return;
+
+        AtomicInteger temp = new AtomicInteger(0);
+        lastModify.set(createNewFileAndMapped(temp, dir));
 
         AtomicInteger l = new AtomicInteger(0);// 本次写入的量
         Spliterator<Map.Entry<String, Object>> entrySpliterator = map.entrySet().spliterator().trySplit();
@@ -65,11 +69,16 @@ public class BackupUtil {
                 }
             }
         });
+        fileNumber.set(temp.get());
     }
 
 
     public static synchronized void snapshotToDisk(StorageEngine map, Path dir, AtomicReference<MappedByteBuffer> lastModify, AtomicInteger fileNumber) {
-        lastModify.set(createNewFileAndMapped(fileNumber, dir));
+        Iterator<Object> iterator = map.iterator();
+        while (!iterator.hasNext()) return;
+
+        AtomicInteger temp = new AtomicInteger(0);
+        lastModify.set(createNewFileAndMapped(temp, dir));
 
         AtomicInteger l = new AtomicInteger(0);// 本次写入的量
         map.iterator().forEachRemaining(e -> {
@@ -93,6 +102,7 @@ public class BackupUtil {
                 }
             }
         });
+        fileNumber.set(temp.get());
     }
 
     private static RandomAccessFile toRAF(File file) {

@@ -7,8 +7,8 @@ import lombok.Data;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import raft.enums.Role;
-import raft.processor.*;
-import rpc.Client;
+import raft.processor.Processor;
+import rpc.RpcClient;
 import rpc.model.requestresponse.*;
 import util.FSTUtil;
 import util.ThreadUtil;
@@ -66,7 +66,6 @@ public class Node implements Runnable {
     public Lock writeLock = this.lock.writeLock();
 
     private List<Processor> processors;
-    private List<Processor> KVProcessors;
 
     private Runnable heartbeatTask;
     public Runnable electTask;
@@ -77,12 +76,21 @@ public class Node implements Runnable {
         this.db = new DB(Config.DB_DIR);
         this.logdb = new LogDB(Config.LOG_DIR);
         this.nextIndex = this.logdb.lastLogIndex + 1;
-        this.processors = Arrays.asList(new AddPeerRequestProcessor(), new RemovePeerRequestProcessor(), new VoteRequestProcessor(), new PowerRequestProcessor(), new DownloadFileRequestProcessor());
-        this.KVProcessors = Arrays.asList(new AppendEntriesRequestProcessor(), new InstallSnapshotRequestProcessor(), new CURDProcessor());
+        this.processors = new ArrayList<>(10);
+        this.loadProcessor();
+    }
+
+    private void loadProcessor() {
+        // 这里使用SPI，算是可以通过配置文件
+        ServiceLoader<Processor> load = ServiceLoader.load(Processor.class);
+        for (Processor processor : load) {
+            this.processors.add(processor);
+        }
     }
 
     @Override
     public void run() {
+
         this.electTask = () -> {
             if (!this.start) {
                 return;
@@ -109,7 +117,7 @@ public class Node implements Runnable {
             if (isLeader()) {// 如果自己是主领导，就需要给各个节点发送心跳包
                 for (NodeAddress remote : this.allNodeAddressExcludeMe()) {
                     if (!remote.alive) continue;
-                    Response response = Client.doRequest(remote, new AppendEntriesRequest(Collections.emptyList(), this.address, this.currentTerm, this.lastAppliedTerm, this.lastAppliedIndex.intValue(), this.committedIndex));
+                    Response response = RpcClient.doRequest(remote, new AppendEntriesRequest(Collections.emptyList(), this.address, this.currentTerm, this.lastAppliedTerm, this.lastAppliedIndex.intValue(), this.committedIndex));
 
                     // install snapshot
                     if (response instanceof ErrorResponse) {// todo 这里约定的是如果心跳包回复ErrorResponse, 说明是out的节点，需要安装更新
@@ -122,7 +130,7 @@ public class Node implements Runnable {
                         } catch (IOException e) {
                             log.error(e);
                         }
-                        InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) Client.doRequest(remote, new InstallSnapshotRequest(this.address, this.currentTerm, this.logdb.dir.toString(), size));
+                        InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) RpcClient.doRequest(remote, new InstallSnapshotRequest(this.address, this.currentTerm, this.logdb.dir.toString(), size));
                         if (snapshotResponse == null || !snapshotResponse.isSuccess()) {
                             log.error("Install snapshot error, should retry?");
                         }
@@ -156,7 +164,7 @@ public class Node implements Runnable {
             for (NodeAddress addr : this.allNodeAddressExcludeMe()) {
                 Runnable r = () -> {
                     try {
-                        VoteResponse response = (VoteResponse) Client.doRequest(addr, new VoteRequest(this.address, this.currentTerm + 1, this.logdb.lastLogIndex, this.logdb.lastLogTerm));
+                        VoteResponse response = (VoteResponse) RpcClient.doRequest(addr, new VoteRequest(this.address, this.currentTerm + 1, this.logdb.lastLogIndex, this.logdb.lastLogTerm));
                         if (response != null) {
                             log.error("收到从:{}的投票回包:{}", addr, response);
                             if (response.isGrant()) {
@@ -216,10 +224,8 @@ public class Node implements Runnable {
         if (!this.start) return;
 
         Response r = null;
-        List<Processor> processorList = new ArrayList<>(this.processors);
-        processorList.addAll(this.KVProcessors);
 
-        for (Processor processor : processorList) {
+        for (Processor processor : this.processors) {
             if (processor.supports(req)) {
                 r = processor.process(req, this);
                 break;

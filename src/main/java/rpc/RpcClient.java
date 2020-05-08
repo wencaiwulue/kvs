@@ -26,8 +26,8 @@ import java.util.function.Consumer;
  * @author naison
  * @since 3/14/2020 15:46
  */
-public class Client {
-    private static final Logger log = LogManager.getLogger(Client.class);
+public class RpcClient {
+    private static final Logger log = LogManager.getLogger(RpcClient.class);
 
     // todo 其实这里可以是address -> list<channel>, 需要支持多个连接
     private static final ConcurrentHashMap<NodeAddress, SocketChannel> connections = new ConcurrentHashMap<>();// 主节点于各个简单的链接
@@ -35,12 +35,12 @@ public class Client {
 
     private static final ConcurrentHashMap<Integer, Response> responseMap = new ConcurrentHashMap<>();
     private static final LinkedBlockingDeque<SocketRequest> requestTask = new LinkedBlockingDeque<>();
-    private static final Thread writeRequestTask = new Thread(Client::writeRequest, "rpc-write-out");
+    private static final Thread writeRequestTask = new Thread(RpcClient::writeRequest, "rpc-write-out");
 
     static {
         try {
             selector = Selector.open();
-            ThreadUtil.getThreadPool().execute(Client::readResponse);
+            ThreadUtil.getThreadPool().execute(RpcClient::readResponse);
             writeRequestTask.start();
         } catch (IOException e) {
             log.error("at the beginning error occurred, shutting down...", e);
@@ -80,7 +80,7 @@ public class Client {
         requestTask.addLast(new SocketRequest(remote, request));
         LockSupport.unpark(writeRequestTask);
 
-        // optimize
+        // optimize, 这里一直自旋
         int m = 1;
         int t = 200; // 400ms 就超时了
         while (m++ < t) {
@@ -127,7 +127,7 @@ public class Client {
         Consumer<SelectionKey> action = key -> {
             if (key.isReadable()) {
                 SocketChannel channel = (SocketChannel) key.channel();
-                ByteBuffer contentLen = ByteBuffer.allocate(4);
+                ByteBuffer contentLen = ByteBuffer.allocateDirect(4);
                 try {
                     int read = channel.read(contentLen);
                     if (read > 0) {

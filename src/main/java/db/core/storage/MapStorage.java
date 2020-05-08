@@ -7,7 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * @author naison
  * @since 4/28/2020 18:03
  */
-@SuppressWarnings("unchecked")
+
 public class MapStorage implements StorageEngine {
     public final ConcurrentHashMap<String, Object> map;// this can be replaced to RockDB、LevelDB or B-tree
 
@@ -16,6 +16,7 @@ public class MapStorage implements StorageEngine {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <T> T get(String key) {
         return (T) this.map.get(key);
     }
@@ -33,6 +34,7 @@ public class MapStorage implements StorageEngine {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <T> Iterator<T> iterator() {
         return (Iterator<T>) map.entrySet().iterator();
     }

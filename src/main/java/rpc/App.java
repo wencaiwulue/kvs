@@ -17,7 +17,7 @@ import java.util.Set;
  */
 public class App {
 
-    private final NIOServer nioServer;
+    private final RpcServer rpcServer;
     private final Node node;
 
     public App(InetSocketAddress address) {
@@ -30,11 +30,11 @@ public class App {
 
     public App(NodeAddress address, Set<NodeAddress> allNodeAddresses) {
         this.node = new Node(address, allNodeAddresses);
-        this.nioServer = new NIOServer(address.getSocketAddress(), this.node);
+        this.rpcServer = new RpcServer(address.getSocketAddress(), this.node);
     }
 
     public void start() {
-        ThreadUtil.getThreadPool().execute(nioServer);
+        ThreadUtil.getThreadPool().execute(rpcServer);
         ThreadUtil.getThreadPool().execute(node);
     }
 

@@ -4,7 +4,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import raft.Node;
 import raft.NodeAddress;
-import rpc.Client;
+import rpc.RpcClient;
 import rpc.model.requestresponse.*;
 
 /**
@@ -31,10 +31,10 @@ public class RemovePeerRequestProcessor implements Processor {
 
         if (!node.isLeader()) {
             if (node.leaderAddress == null) {
-                return Client.doRequest(request.peer, new RemovePeerRequest(node.address, node.address));
+                return RpcClient.doRequest(request.peer, new RemovePeerRequest(node.address, node.address));
             } else {
                 if (request.sender == null) {
-                    return Client.doRequest(node.leaderAddress, request);
+                    return RpcClient.doRequest(node.leaderAddress, request);
                 } else {
                     return new RemovePeerResponse();// exit 2
                 }
@@ -44,9 +44,9 @@ public class RemovePeerRequestProcessor implements Processor {
             // each node receive leader command, will ask the remove peer to remove itself
             request.sender = node.leaderAddress;
             for (NodeAddress nodeAddress : node.allNodeAddressExcludeMe()) {
-                Client.doRequest(nodeAddress, request);
+                RpcClient.doRequest(nodeAddress, request);
             }
-            PowerResponse response = (PowerResponse) Client.doRequest(request.peer, new PowerRequest(true, true));
+            PowerResponse response = (PowerResponse) RpcClient.doRequest(request.peer, new PowerRequest(true, true));
             if (response != null && response.isSuccess()) {
                 return new RemovePeerResponse();
             } else {

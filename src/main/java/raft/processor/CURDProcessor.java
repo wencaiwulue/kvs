@@ -7,7 +7,7 @@ import raft.LogEntry;
 import raft.Node;
 import raft.NodeAddress;
 import raft.enums.CURDOperation;
-import rpc.Client;
+import rpc.RpcClient;
 import rpc.model.requestresponse.*;
 
 import java.util.Collections;
@@ -40,7 +40,7 @@ public class CURDProcessor implements Processor {
         node.writeLock.lock();
         try {
             if (!node.isLeader()) {
-                return Client.doRequest(node.leaderAddress, req); // redirect to leader
+                return RpcClient.doRequest(node.leaderAddress, req); // redirect to leader
             }
 
             List<LogEntry> logEntries = Collections.singletonList(new LogEntry(-1, node.currentTerm, request.getOperation(), request.getKey(), request.getValue()));
@@ -50,7 +50,7 @@ public class CURDProcessor implements Processor {
 
             AtomicInteger ai = new AtomicInteger(0);
             for (NodeAddress peerAddress : node.allNodeAddressExcludeMe()) {
-                AppendEntriesResponse res = (AppendEntriesResponse) Client.doRequest(peerAddress, new AppendEntriesRequest(logEntries, node.address, node.currentTerm, node.getLastAppliedIndex().intValue(), node.getLastAppliedTerm(), node.committedIndex));
+                AppendEntriesResponse res = (AppendEntriesResponse) RpcClient.doRequest(peerAddress, new AppendEntriesRequest(logEntries, node.address, node.currentTerm, node.getLastAppliedIndex().intValue(), node.getLastAppliedTerm(), node.committedIndex));
                 if (res != null) {
                     if (res.isSuccess()) {
                         ai.addAndGet(1);

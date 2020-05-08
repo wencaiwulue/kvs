@@ -5,14 +5,12 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import raft.LogEntry;
 import raft.Node;
-import rpc.Client;
+import rpc.RpcClient;
 import rpc.model.requestresponse.*;
 import util.BackupUtil;
 import util.RetryUtil;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
@@ -20,7 +18,6 @@ import java.nio.file.StandardOpenOption;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
-import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
 
@@ -61,7 +58,7 @@ public class InstallSnapshotRequestProcessor implements Processor {
         int length = 1024 * 10 * 10; // 每次下载10MB,这里如果要多线程下载，相应的连接也需要改
         do {
             int finalOffset = offset;
-            Callable<Response> c = () -> Client.doRequest(request.leader, new DownloadFileRequest(request.filename, finalOffset, length));
+            Callable<Response> c = () -> RpcClient.doRequest(request.leader, new DownloadFileRequest(request.filename, finalOffset, length));
             Function<Response, Boolean> f = Objects::isNull;
             DownloadFileResponse response = (DownloadFileResponse) RetryUtil.retryWithResultChecker(c, f, 3);
 

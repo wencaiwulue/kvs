@@ -4,7 +4,7 @@ import db.operationservice.*;
 import raft.LogEntry;
 import raft.Node;
 import raft.NodeAddress;
-import rpc.Client;
+import rpc.RpcClient;
 import rpc.model.requestresponse.AppendEntriesRequest;
 
 import java.util.Arrays;
@@ -30,7 +30,7 @@ public class StateMachine {
 
         AppendEntriesRequest request = new AppendEntriesRequest(Collections.emptyList(), leader.address, leader.currentTerm, leader.getLastAppliedTerm(), leader.getLastAppliedTerm(), leader.committedIndex);
         for (NodeAddress remote : leader.allNodeAddressExcludeMe()) {
-            Client.doRequest(remote, request);
+            RpcClient.doRequest(remote, request);
         }
     }
 

@@ -12,7 +12,7 @@ import java.util.Set;
  * @author naison
  * @since 5/3/2020 18:32
  */
-@SuppressWarnings("unchecked")
+
 public class RedisEngine implements StorageEngine {
     private static final Jedis jedis;
 
@@ -24,6 +24,7 @@ public class RedisEngine implements StorageEngine {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <T> T get(String key) {
         String s = jedis.get(key);
         if (s != null) {
@@ -46,6 +47,7 @@ public class RedisEngine implements StorageEngine {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <T> Iterator<T> iterator() {
         Set<String> keys = jedis.keys("*");
         Map<String, Object> map = new HashMap<>();
