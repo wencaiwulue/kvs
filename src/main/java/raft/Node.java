@@ -81,7 +81,7 @@ public class Node implements Runnable {
     }
 
     private void loadProcessor() {
-        // 这里使用SPI，算是可以通过配置文件
+        // 这里使用SPI，可以通过配置文件修改实现
         ServiceLoader<Processor> load = ServiceLoader.load(Processor.class);
         for (Processor processor : load) {
             this.processors.add(processor);
