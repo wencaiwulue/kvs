@@ -4,6 +4,9 @@ import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.KryoException;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
+import com.esotericsoftware.kryo.util.DefaultInstantiatorStrategy;
+import com.esotericsoftware.kryo.util.Pool;
+import org.objenesis.strategy.StdInstantiatorStrategy;
 
 import java.util.concurrent.TimeUnit;
 
@@ -20,9 +23,31 @@ public class KryoUtil { // only use for writing data to disk
     private static final Input input = new Input(1024 * 10);// 10KB
     private static int outputSize = 10;
     private static Output output = new Output(1 << outputSize);
+    private static final Pool<Kryo> kryoPool;
+
+    static {
+        kryoPool = new Pool<>(true, true, 100) {
+            @Override
+            protected Kryo create() {
+                Kryo kryo = new Kryo();
+                kryo.setReferences(true);
+                kryo.setRegistrationRequired(false);
+                ((DefaultInstantiatorStrategy) kryo.getInstantiatorStrategy()).setFallbackInstantiatorStrategy(new StdInstantiatorStrategy());
+                return kryo;
+            }
+        };
+    }
+
+
+    public static byte[] asByte(Object o) {
+        Kryo obtain = kryoPool.obtain();
+        obtain.writeClassAndObject(output, o);
+        return output.toBytes();
+    }
+
 
     public synchronized static byte[] asByteArray(Object o) {
-        output.clear();
+        output.setPosition(0);
         int retry = 3;
         int t = 0;
         while (t++ < retry) {

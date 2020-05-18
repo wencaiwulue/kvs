@@ -131,17 +131,21 @@ public class RpcClient {
                 try {
                     int read = channel.read(contentLen);
                     if (read > 0) {
-                        contentLen.flip();
-                        int len = contentLen.getInt();
-                        if (len > 0) {
-                            System.out.println("len: " + len);
-                            ByteBuffer result = ByteBuffer.allocate(len);
-                            if (len == channel.read(result)) {
-                                Response response = (Response) FSTUtil.getConf().asObject(result.array());
-                                if (response != null) {
-                                    responseMap.put(response.requestId, response);
+                        try {
+                            contentLen.flip();
+                            int len = contentLen.getInt();
+                            if (len > 0) {
+                                ByteBuffer result = ByteBuffer.allocate(len);
+                                if (len == channel.read(result)) {
+                                    Response response = (Response) FSTUtil.getConf().asObject(result.array());
+                                    if (response != null) {
+                                        responseMap.put(response.requestId, response);
+                                    }
                                 }
                             }
+                        } catch (OutOfMemoryError e) {
+                            log.error(e);
+                            System.out.println("len: " + contentLen.getInt());
                         }
                     } else if (read < 0) {
                         if (key.isValid()) {

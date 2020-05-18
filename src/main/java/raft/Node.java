@@ -65,7 +65,7 @@ public class Node implements Runnable {
     public Lock readLock = this.lock.readLock();
     public Lock writeLock = this.lock.writeLock();
 
-    private List<Processor> processors;
+    private List<Processor> processors = new ArrayList<>(10);
 
     private Runnable heartbeatTask;
     public Runnable electTask;
@@ -76,11 +76,10 @@ public class Node implements Runnable {
         this.db = new DB(Config.DB_DIR);
         this.logdb = new LogDB(Config.LOG_DIR);
         this.nextIndex = this.logdb.lastLogIndex + 1;
-        this.processors = new ArrayList<>(10);
-        this.loadProcessor();
     }
 
-    private void loadProcessor() {
+    // 放在代码块中，每次创建对象的时候会自动调用
+    {
         // 这里使用SPI，可以通过配置文件修改实现
         ServiceLoader<Processor> load = ServiceLoader.load(Processor.class);
         for (Processor processor : load) {
@@ -219,27 +218,26 @@ public class Node implements Runnable {
     }
 
     // 可以拆分为服务器之间与服务器和client两种，也就是状态协商和curd
-    public void handle(Request req, SocketChannel channel) {
-        if (req == null) return;
+    public void handle(Request request, SocketChannel channel) {
+        if (request == null) return;
         if (!this.start) return;
 
-        Response r = null;
-
+        Response response = null;
         for (Processor processor : this.processors) {
-            if (processor.supports(req)) {
-                r = processor.process(req, this);
+            if (processor.supports(request)) {
+                response = processor.process(request, this);
                 break;
             }
         }
 
-        if (r != null) {
-            r.requestId = req.requestId;
+        if (response != null) {
+            response.requestId = request.requestId;
         }
 
         try {
-            channel.write(FSTUtil.asArrayWithLength(r));
+            channel.write(FSTUtil.asArrayWithLength(response));
         } catch (ClosedChannelException e) {
-            log.error("这里的channel失效了, 需要重试吗?");
+            log.error("这里的channel失效了, 需要重试吗?", e);
         } catch (IOException e) {
             log.error("回复失败。", e);
         }

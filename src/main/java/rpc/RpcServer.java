@@ -173,31 +173,31 @@ public class RpcServer implements Runnable {
                                 byteBuffer.flip();
                                 int len = byteBuffer.getInt();
                                 if (len > 0) {
-                                    System.out.println("length: " + len);
                                     ByteBuffer buffer = ByteBuffer.allocate(len);
                                     if (channel.read(buffer) == len) {
-                                        Request o = (Request) FSTUtil.getConf().asObject(buffer.array());
-                                        this.node.handle(o, channel);// handle the request
+                                        Request request = (Request) FSTUtil.getConf().asObject(buffer.array());
+                                        this.node.handle(request, channel);// handle the request
                                     }
                                 }
                             } catch (OutOfMemoryError oom) {
                                 log.error(oom);
+                                log.error("length: " + byteBuffer.getInt());
                             }
                         }
                     } catch (SocketException e) {
                         key.channel();
                         try {
                             channel.close();
-                        } catch (IOException ioException) {
-                            ioException.printStackTrace();
+                        } catch (IOException ex) {
+                            ex.printStackTrace();
                         }
                         log.error(e.getMessage());
                     } catch (ClosedChannelException e) {
                         key.channel();
                         try {
                             channel.close();
-                        } catch (IOException ioException) {
-                            ioException.printStackTrace();
+                        } catch (IOException ex) {
+                            ex.printStackTrace();
                         }
                         log.error("channel关闭了");
                     } catch (IOException e) {

@@ -24,8 +24,8 @@ class AppTest {
 
     @Test
     void addPeer() {
-        RpcClient.doRequest(p0, new AddPeerRequest(new NodeAddress(true, p8001)));
-        RpcClient.doRequest(p1, new AddPeerRequest(new NodeAddress(true, p8002)));
+        System.out.println(RpcClient.doRequest(p0, new AddPeerRequest(new NodeAddress(true, p8001))));
+        System.out.println(RpcClient.doRequest(p1, new AddPeerRequest(new NodeAddress(true, p8002))));
     }
 
     @Test
