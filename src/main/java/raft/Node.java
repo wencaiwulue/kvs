@@ -81,10 +81,7 @@ public class Node implements Runnable {
     // 放在代码块中，每次创建对象的时候会自动调用
     {
         // 这里使用SPI，可以通过配置文件修改实现
-        ServiceLoader<Processor> load = ServiceLoader.load(Processor.class);
-        for (Processor processor : load) {
-            this.processors.add(processor);
-        }
+        ServiceLoader.load(Processor.class).iterator().forEachRemaining(this.processors::add);
     }
 
     @Override
