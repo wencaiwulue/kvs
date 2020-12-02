@@ -6,13 +6,7 @@ package util;
  */
 public class Util {
     public static final int CPUS = Runtime.getRuntime().availableProcessors();
-    public static final int MIN_THREAD_POOL_SIZE = Math.max(3, cups());
+    public static final int MIN_THREAD_POOL_SIZE = Math.max(3, CPUS);
     public static final int MAX_THREAD_POOL_SIZE = MIN_THREAD_POOL_SIZE * 2;
     public static final int MAX_SCHEDULED_THREAD_POOL_SIZE = 1;
-
-
-    public static int cups() {
-        return CPUS;
-    }
-
 }
