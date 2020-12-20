@@ -5,13 +5,15 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import raft.enums.CURDOperation;
 
+import java.io.Serializable;
+
 /**
  * @author naison
  * @since 3/14/2020 19:06
  */
 @Getter
 @NoArgsConstructor
-public class LogEntry {
+public class LogEntry implements Serializable {
     public long index;
     int term;
     CURDOperation operation;
