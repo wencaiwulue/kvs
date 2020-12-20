@@ -142,7 +142,7 @@ public class RpcServer implements Runnable {
 
     private boolean processRead(SelectionKey key) {
         try {
-            ThreadUtil.getThreadPool().execute(new Handler(key, node));
+            ThreadUtil.getThreadPool().submit(new Handler(key, node));
 //            new Handler(key, node).run();
         } catch (Exception e) {
             return false;

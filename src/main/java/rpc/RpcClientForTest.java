@@ -43,7 +43,7 @@ public class RpcClientForTest {
     static {
         try {
             selector = Selector.open();
-            ThreadUtil.getThreadPool().execute(RpcClientForTest::readResponse);
+            ThreadUtil.getThreadPool().submit(RpcClientForTest::readResponse);
             writeRequestTask.start();
         } catch (IOException e) {
             LOGGER.error("at the beginning error occurred, shutting down...", e);

@@ -1,6 +1,8 @@
 
 package util;
 
+import org.checkerframework.checker.nullness.qual.NonNull;
+
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -9,16 +11,16 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @since 3/25/2020 17:21
  */
 public class ThreadUtil {
-    private static final ThreadPoolExecutor POOL =
+    private static final ExecutorService POOL =
             new ThreadPoolExecutor(Util.MIN_THREAD_POOL_SIZE, Util.MAX_THREAD_POOL_SIZE, 60L, TimeUnit.SECONDS, new LinkedBlockingQueue<>(), new KVSThreadFactory(), (r, executor) -> System.out.println("这里有个任务死掉了：" + r));
 
-    private static final ScheduledThreadPoolExecutor SCHEDULED_POOL = new ScheduledThreadPoolExecutor(Util.MAX_SCHEDULED_THREAD_POOL_SIZE);
+    private static final ScheduledExecutorService SCHEDULED_POOL = new ScheduledThreadPoolExecutor(Util.MAX_SCHEDULED_THREAD_POOL_SIZE);
 
-    public static ThreadPoolExecutor getThreadPool() {
+    public static ExecutorService getThreadPool() {
         return POOL;
     }
 
-    public static ScheduledThreadPoolExecutor getScheduledThreadPool() {
+    public static ScheduledExecutorService getScheduledThreadPool() {
         return SCHEDULED_POOL;
     }
 
@@ -42,7 +44,7 @@ public class ThreadUtil {
             namePrefix = "kvs-pool-" + poolNumber.getAndIncrement() + "-thread-";
         }
 
-        public Thread newThread(Runnable r) {
+        public Thread newThread(@NonNull Runnable r) {
             Thread t = new Thread(group, r, namePrefix + threadNumber.getAndIncrement(), 0);
             if (t.isDaemon())
                 t.setDaemon(false);

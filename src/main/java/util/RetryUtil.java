@@ -15,7 +15,7 @@ public class RetryUtil {
         times = Math.max(1, times);// at lease one times
         while (i++ < times) {
             try {
-                ThreadUtil.getThreadPool().execute(r);
+                ThreadUtil.getThreadPool().submit(r);
                 break;
             } catch (Exception ignored) {
                 ThreadUtil.sleep(offsetMills);

@@ -34,8 +34,8 @@ public class App {
     }
 
     public void start() {
-        ThreadUtil.getThreadPool().execute(rpcServer);
-        ThreadUtil.getThreadPool().execute(node);
+        ThreadUtil.getThreadPool().submit(rpcServer);
+        ThreadUtil.getThreadPool().submit(node);
     }
 
     public static void main(String[] args) {

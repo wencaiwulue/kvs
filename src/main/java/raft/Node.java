@@ -179,7 +179,7 @@ public class Node implements Runnable {
                         latch.countDown();
                     }
                 };
-                ThreadUtil.getThreadPool().execute(r);
+                ThreadUtil.getThreadPool().submit(r);
             }
             latch.await(Config.ELECT_RATE.toMillis(), TimeUnit.MILLISECONDS);
             if (fail.getAcquire()) {
@@ -192,7 +192,7 @@ public class Node implements Runnable {
                 this.leaderAddress = this.address;
                 this.role = Role.LEADER;
                 this.nextHeartbeatTime = -1;// 立即心跳
-                ThreadUtil.getThreadPool().execute(this.heartbeatTask);
+                ThreadUtil.getThreadPool().submit(this.heartbeatTask);
             } else {
                 LOGGER.error("ticket: {} and expect: {}", ai.get(), Math.ceil(this.allNodeAddresses.size() / 2D));
                 LOGGER.error("elect failed");
