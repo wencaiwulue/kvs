@@ -23,7 +23,7 @@ public class KvsApplication {
 
     public static void main(String[] args) {
         int port = Integer.parseInt(args[0]);
-        App app = new App(new InetSocketAddress("localhost", port));// 邻居不包含自己
+        App app = new App(new InetSocketAddress("localhost", port));
         app.start();
     }
 }
