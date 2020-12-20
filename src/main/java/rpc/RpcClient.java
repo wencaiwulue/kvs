@@ -91,10 +91,7 @@ public class RpcClient {
             log.error("waiting for response timeout !!!", e);
             return null;
         }
-        if (responseMap.containsKey(request.requestId)) {
-            return responseMap.remove(request.requestId);
-        }
-        return null;
+        return responseMap.remove(request.requestId);
     }
 
     private static void writeRequest() {

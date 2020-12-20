@@ -16,10 +16,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
@@ -29,16 +26,17 @@ import java.util.function.Consumer;
  * @since 3/14/2020 15:46
  */
 public class RpcClientForTest {
-    private static final Logger log = LogManager.getLogger(RpcClient.class);
+    private static final Logger LOGGER = LogManager.getLogger(RpcClient.class);
 
     // address -> list<channel>, 支持多个连接
-    private static final int coreSize = 20;
+    private static final int CORE_SIZE = 20;
 
-    private static final ConcurrentHashMap<NodeAddress, Connect> connections = new ConcurrentHashMap<>();// 节点之间的连接
+    private static final ConcurrentHashMap<NodeAddress, Connect> CONNECTIONS = new ConcurrentHashMap<>();// 节点之间的连接
 
     public static Selector selector;// 这个selector处理的是请求的回包
 
     private static final ConcurrentHashMap<Integer, Response> responseMap = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Integer, CountDownLatch> responseMapLock = new ConcurrentHashMap<>();
     private static final LinkedBlockingDeque<SocketRequest> requestTask = new LinkedBlockingDeque<>();
     private static final Thread writeRequestTask = new Thread(RpcClientForTest::writeRequest);
 
@@ -48,7 +46,7 @@ public class RpcClientForTest {
             ThreadUtil.getThreadPool().execute(RpcClientForTest::readResponse);
             writeRequestTask.start();
         } catch (IOException e) {
-            log.error("at the beginning error occurred, shutting down...", e);
+            LOGGER.error("at the beginning error occurred, shutting down...", e);
             Runtime.getRuntime().exit(-1);
         }
     }
@@ -56,18 +54,15 @@ public class RpcClientForTest {
     public static Response doRequest(NodeAddress remote, final Request request) {
         if (remote == null /*|| !remote.alive*/) return null;
 
+        CountDownLatch latch = new CountDownLatch(1);
         requestTask.addLast(new SocketRequest(remote, request));
+        responseMapLock.put(request.requestId, latch);
         LockSupport.unpark(writeRequestTask);
 
-        // optimize
-        int m = 1;
-        int t = 200; // 400ms 就超时了
-        while (m++ < t) {
-            if (!responseMap.containsKey(request.requestId) && remote.alive) {
-                ThreadUtil.sleep(2);
-            } else {
-                break;
-            }
+        try {
+            latch.await(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            LOGGER.error(e);
         }
         return responseMap.remove(request.requestId);
     }
@@ -86,7 +81,7 @@ public class RpcClientForTest {
                             success = true;
                             requestTask.poll();
                         } catch (IOException e) {
-                            log.error(e); // 这里可能出现的情况是对方关闭了channel，该怎么办呢？
+                            LOGGER.error(e); // 这里可能出现的情况是对方关闭了channel，该怎么办呢？
                             success = false;
                         }
                     }
@@ -119,6 +114,8 @@ public class RpcClientForTest {
                                 Response response = (Response) FSTUtil.getConf().asObject(result.array());
                                 if (response != null) {
                                     responseMap.put(response.requestId, response);
+                                    responseMapLock.get(response.requestId).countDown();
+                                    responseMapLock.remove(response.requestId);
                                 }
                             }
                         }
@@ -154,20 +151,20 @@ public class RpcClientForTest {
     public static SocketChannel getConnection(NodeAddress remote) {
         if (remote == null) return null;
 
-        if (!connections.containsKey(remote) || connections.get(remote).available.isEmpty() || Node.isDead(connections.get(remote).available.peek())) {
+        if (!CONNECTIONS.containsKey(remote) || CONNECTIONS.get(remote).available.isEmpty() || Node.isDead(CONNECTIONS.get(remote).available.peek())) {
             synchronized (remote.toString().intern()) {
-                if (!connections.containsKey(remote) || connections.get(remote).available.isEmpty() || Node.isDead(connections.get(remote).available.peek())) {
+                if (!CONNECTIONS.containsKey(remote) || CONNECTIONS.get(remote).available.isEmpty() || Node.isDead(CONNECTIONS.get(remote).available.peek())) {
 
-                    connections.putIfAbsent(remote, new Connect(coreSize));
+                    CONNECTIONS.putIfAbsent(remote, new Connect(CORE_SIZE));
 
-                    if (connections.get(remote).haveSpace()) {// 如果没超过core size
+                    if (CONNECTIONS.get(remote).haveSpace()) {// 如果没超过core size
                         try {
                             SocketChannel channel = SocketChannel.open(remote.getSocketAddress());
                             channel.setOption(StandardSocketOptions.TCP_NODELAY, true);
                             channel.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
                             channel.configureBlocking(false);
                             channel.register(selector, SelectionKey.OP_READ);
-                            connections.computeIfPresent(remote, (nodeAddress, connect) -> {
+                            CONNECTIONS.computeIfPresent(remote, (nodeAddress, connect) -> {
                                 connect.available.add(channel);
                                 connect.aliveNum.incrementAndGet();
                                 return connect;
@@ -175,10 +172,10 @@ public class RpcClientForTest {
 
                             remote.alive = true;
                         } catch (ConnectException e) {
-                            log.error("remote:{}, 连接失败, message:{}。", remote.getSocketAddress().getPort(), e.getMessage());
+                            LOGGER.error("remote:{}, 连接失败, message:{}。", remote.getSocketAddress().getPort(), e.getMessage());
                             remote.alive = false;
                         } catch (IOException e) {
-                            log.error(e);
+                            LOGGER.error(e);
                             remote.alive = false;
                         }
                     }
@@ -186,7 +183,7 @@ public class RpcClientForTest {
             }
         }
         try {
-            return connections.get(remote).available.take();// 阻塞取
+            return CONNECTIONS.get(remote).available.take();// 阻塞取
         } catch (InterruptedException e) {
             e.printStackTrace();
             return null;
@@ -195,13 +192,13 @@ public class RpcClientForTest {
 
     public static void recycle(NodeAddress remote, SocketChannel channel) {
         if (channel == null || !channel.isConnected() || !channel.isOpen()) {// 如果已经失效，就把当前持有数减少，方便下次新建
-            connections.computeIfPresent(remote, (nodeAddress, connect) -> {
+            CONNECTIONS.computeIfPresent(remote, (nodeAddress, connect) -> {
                 connect.aliveNum.decrementAndGet();
                 connect.available.remove(channel);
                 return connect;
             });
         } else {
-            connections.computeIfPresent(remote, (nodeAddress, connect) -> {
+            CONNECTIONS.computeIfPresent(remote, (nodeAddress, connect) -> {
                 connect.available.add(channel);
                 return connect;
             });
@@ -229,7 +226,7 @@ public class RpcClientForTest {
         }
 
         public boolean haveSpace() {
-            return aliveNum.get() < coreSize;
+            return aliveNum.get() < CORE_SIZE;
         }
     }
 
