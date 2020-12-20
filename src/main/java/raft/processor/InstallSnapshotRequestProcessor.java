@@ -27,7 +27,7 @@ import java.util.function.Function;
  */
 public class InstallSnapshotRequestProcessor implements Processor {
 
-    private static final Logger log = LogManager.getLogger(InstallSnapshotRequestProcessor.class);
+    private static final Logger LOGGER = LogManager.getLogger(InstallSnapshotRequestProcessor.class);
 
     @Override
     public boolean supports(Request req) {
@@ -39,14 +39,14 @@ public class InstallSnapshotRequestProcessor implements Processor {
         // copy file, apply
         InstallSnapshotRequest request = (InstallSnapshotRequest) req;
         if (request.fileSize == 0) {
-            log.error("this is impossible");
+            LOGGER.error("this is impossible");
         }
 
         FileChannel fileChannel = null;
         try {
             fileChannel = FileChannel.open(Path.of(request.filename), StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
         } catch (IOException e) {
-            log.error(e);
+            LOGGER.error(e);
         }
         assert fileChannel != null;
 
@@ -71,7 +71,7 @@ public class InstallSnapshotRequestProcessor implements Processor {
                 }
                 offset += Math.min(response.bytes.length, length);
             } else {
-                log.error("what should i do?");
+                LOGGER.error("what should i do?");
             }
         } while (p++ < times); // 下载文件
 

@@ -1,7 +1,7 @@
 import org.junit.jupiter.api.Test;
 import raft.NodeAddress;
 import raft.enums.CURDOperation;
-import rpc.RpcClient;
+import rpc.RpcClientForTest;
 import rpc.model.requestresponse.AddPeerRequest;
 import rpc.model.requestresponse.CURDKVRequest;
 import rpc.model.requestresponse.RemovePeerRequest;
@@ -24,19 +24,19 @@ class AppTest {
 
     @Test
     void addPeer() {
-        System.out.println(RpcClient.doRequest(p0, new AddPeerRequest(new NodeAddress(true, p8001))));
-        System.out.println(RpcClient.doRequest(p1, new AddPeerRequest(new NodeAddress(true, p8002))));
+        System.out.println(RpcClientForTest.doRequest(p0, new AddPeerRequest(new NodeAddress(true, p8001))));
+        System.out.println(RpcClientForTest.doRequest(p0, new AddPeerRequest(new NodeAddress(true, p8002))));
     }
 
     @Test
     void removePeer() {
-        RpcClient.doRequest(p2, new RemovePeerRequest(new NodeAddress(true, p8000)));
+        RpcClientForTest.doRequest(p2, new RemovePeerRequest(new NodeAddress(true, p8000)));
     }
 
     @Test
     void curd() {
-        RpcClient.doRequest(p0, new CURDKVRequest(CURDOperation.set, "a", 1));
-        RpcClient.doRequest(p1, new CURDKVRequest(CURDOperation.set, "b", 2));
+        RpcClientForTest.doRequest(p0, new CURDKVRequest(CURDOperation.set, "a", 1));
+        RpcClientForTest.doRequest(p1, new CURDKVRequest(CURDOperation.set, "b", 2));
     }
 
 }

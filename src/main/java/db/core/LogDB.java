@@ -34,7 +34,7 @@ import static util.BackupUtil.write;
  * @since 4/1/2020 10:53
  */
 public class LogDB {
-    private static final Logger log = LogManager.getLogger(LogDB.class);
+    private static final Logger LOG = LogManager.getLogger(LogDB.class);
 
     private final StorageEngine engine;
     public volatile int lastLogIndex;
@@ -85,7 +85,7 @@ public class LogDB {
                 BackupUtil.readFromDisk(this.engine, dbFile);
             }
         } catch (IOException e) {
-            log.error(e);
+            LOG.error(e);
         } finally {
             this.writeLock.unlock();
         }

@@ -22,8 +22,6 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Spliterator;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -32,7 +30,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * @since 3/31/2020 20:56
  */
 public class BackupUtil {
-    private static final Logger log = LogManager.getLogger(BackupUtil.class);
+    private static final Logger LOG = LogManager.getLogger(BackupUtil.class);
 
     /*
      * 写入磁盘格式为
@@ -110,7 +108,7 @@ public class BackupUtil {
         try {
             return new RandomAccessFile(file, "rw");
         } catch (FileNotFoundException e) {
-            log.error(e);
+            LOG.error(e);
             return null;
         }
     }
@@ -154,7 +152,7 @@ public class BackupUtil {
             map.putInt(bytes.length);
             map.put(bytes);
         } catch (BufferOverflowException e) {
-            log.error(e);
+            LOG.error(e);
             e.printStackTrace();
         }
     }
@@ -188,7 +186,7 @@ public class BackupUtil {
                 mapped = channel.map(FileChannel.MapMode.READ_WRITE, position, size);
             } catch (IOException e) {
                 e.printStackTrace();
-                log.error(e);
+                LOG.error(e);
             }
             if (mapped == null) return;
 
@@ -251,7 +249,7 @@ public class BackupUtil {
                 mapped = channel.map(FileChannel.MapMode.READ_WRITE, position, size);
             } catch (IOException e) {
                 e.printStackTrace();
-                log.error(e);
+                LOG.error(e);
             }
             if (mapped == null) return;
 
@@ -310,7 +308,7 @@ public class BackupUtil {
                 mapped = channel.map(FileChannel.MapMode.READ_WRITE, position, size);
             } catch (IOException e) {
                 e.printStackTrace();
-                log.error(e);
+                LOG.error(e);
             }
             if (mapped == null) return;
 

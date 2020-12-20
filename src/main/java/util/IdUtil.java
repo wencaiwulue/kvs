@@ -7,9 +7,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @since 4/17/2020 15:31
  */
 public class IdUtil {
-    private static final AtomicInteger ai = new AtomicInteger(0);
+    private static final AtomicInteger AI = new AtomicInteger(0);
 
     public static int get() {
-        return ai.getAndIncrement();
+        return AI.getAndIncrement();
     }
 }

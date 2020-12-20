@@ -15,7 +15,7 @@ import rpc.model.requestresponse.VoteResponse;
  */
 public class VoteRequestProcessor implements Processor {
 
-    private static final Logger log = LogManager.getLogger(VoteRequestProcessor.class);
+    private static final Logger LOGGER = LogManager.getLogger(VoteRequestProcessor.class);
 
     @Override
     public boolean supports(Request req) {
@@ -27,7 +27,7 @@ public class VoteRequestProcessor implements Processor {
         node.getWriteLock().lock();
         try {
             VoteRequest request = (VoteRequest) req;
-            log.error("收到vote请求.from:{} to {}, vote info:{}", request.getCandidateId().getSocketAddress().getPort(), node.getAddress().getSocketAddress().getPort(), request);
+            LOGGER.error("收到vote请求.from:{} to {}, vote info:{}", request.getCandidateId().getSocketAddress().getPort(), node.getAddress().getSocketAddress().getPort(), request);
             int i = Long.compare(request.getTerm(), node.currentTerm);
 
             int j = Long.compare(request.getLastLogTerm(), node.logdb.lastLogTerm);

@@ -13,7 +13,7 @@ import rpc.model.requestresponse.*;
  * @since 4/13/2020 14:42
  */
 public class AppendEntriesRequestProcessor implements Processor {
-    private static final Logger log = LogManager.getLogger(AppendEntriesRequestProcessor.class);
+    private static final Logger LOGGER = LogManager.getLogger(AppendEntriesRequestProcessor.class);
 
     @Override
     public boolean supports(Request req) {
@@ -26,7 +26,7 @@ public class AppendEntriesRequestProcessor implements Processor {
         try {
             node.nextElectTime = node.delayElectTime();// push off elect
             AppendEntriesRequest request = (AppendEntriesRequest) req;
-            log.error("收到来自leader:{}的心跳, term:{}", request.getLeaderId().getSocketAddress().getPort(), request.getTerm());
+            LOGGER.error("收到来自leader:{}的心跳, term:{}", request.getLeaderId().getSocketAddress().getPort(), request.getTerm());
             if (request.getTerm() < node.currentTerm) {
                 return new AppendEntriesResponse(node.currentTerm, false, node.logdb.lastLogIndex);
             } else if (request.getTerm() > node.currentTerm) {

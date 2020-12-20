@@ -14,10 +14,10 @@ import java.util.Set;
  */
 
 public class RedisEngine implements StorageEngine {
-    private static final Jedis jedis;
+    private static final Jedis JEDIS;
 
     static {
-        jedis = new Jedis("localhost", 6379);
+        JEDIS = new Jedis("localhost", 6379);
     }
 
     public RedisEngine() {
@@ -26,7 +26,7 @@ public class RedisEngine implements StorageEngine {
     @Override
     @SuppressWarnings("unchecked")
     public <T> T get(String key) {
-        String s = jedis.get(key);
+        String s = JEDIS.get(key);
         if (s != null) {
             return (T) FSTUtil.getConf().asObject(s.getBytes());
         } else {
@@ -36,23 +36,23 @@ public class RedisEngine implements StorageEngine {
 
     @Override
     public <T> boolean set(String key, T t) {
-        jedis.set(key, FSTUtil.getConf().asJsonString(t));
+        JEDIS.set(key, FSTUtil.getConf().asJsonString(t));
         return true;
     }
 
     @Override
     public <T> boolean remove(String key) {
-        jedis.del(key);
+        JEDIS.del(key);
         return true;
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public <T> Iterator<T> iterator() {
-        Set<String> keys = jedis.keys("*");
+        Set<String> keys = JEDIS.keys("*");
         Map<String, Object> map = new HashMap<>();
         keys.parallelStream().forEach(e -> {
-            String s = jedis.get(e);
+            String s = JEDIS.get(e);
             Object o = FSTUtil.getConf().asObject(s.getBytes());
             map.put(e, o);
         });

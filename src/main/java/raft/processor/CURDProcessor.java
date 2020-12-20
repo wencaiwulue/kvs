@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class CURDProcessor implements Processor {
 
-    private static final Logger log = LogManager.getLogger(CURDProcessor.class);
+    private static final Logger LOGGER = LogManager.getLogger(CURDProcessor.class);
 
     @Override
     public boolean supports(Request req) {

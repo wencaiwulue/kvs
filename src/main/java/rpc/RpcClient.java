@@ -18,7 +18,9 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
 
@@ -34,6 +36,7 @@ public class RpcClient {
     private static Selector selector;// 这个selector处理的是请求的回包
 
     private static final ConcurrentHashMap<Integer, Response> responseMap = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Integer, CountDownLatch> responseMapLock = new ConcurrentHashMap<>();
     private static final LinkedBlockingDeque<SocketRequest> requestTask = new LinkedBlockingDeque<>();
     private static final Thread writeRequestTask = new Thread(RpcClient::writeRequest, "rpc-write-out");
 
@@ -77,20 +80,21 @@ public class RpcClient {
     public static Response doRequest(NodeAddress remote, final Request request) {
         if (remote == null || !remote.alive) return null;
 
+        CountDownLatch latch = new CountDownLatch(1);
         requestTask.addLast(new SocketRequest(remote, request));
+        responseMapLock.put(request.requestId, latch);
         LockSupport.unpark(writeRequestTask);
 
-        // optimize, 这里一直自旋
-        int m = 1;
-        int t = 200; // 400ms 就超时了
-        while (m++ < t) {
-            if (!responseMap.containsKey(request.requestId) && remote.alive) {
-                ThreadUtil.sleep(2);
-            } else {
-                break;
-            }
+        try {
+            latch.await(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            log.error("waiting for response timeout !!!", e);
+            return null;
         }
-        return responseMap.remove(request.requestId);
+        if (responseMap.containsKey(request.requestId)) {
+            return responseMap.remove(request.requestId);
+        }
+        return null;
     }
 
     private static void writeRequest() {
@@ -109,7 +113,7 @@ public class RpcClient {
                                 success = true;
                                 break;
                             } catch (IOException e) {
-                                log.error(e); // 这里可能出现的情况是对方关闭了channel，该怎么办呢？
+                                log.error("write request error ", e); // 这里可能出现的情况是对方关闭了channel，该怎么办呢？
                             }
                         }
                     }
@@ -140,6 +144,8 @@ public class RpcClient {
                                     Response response = (Response) FSTUtil.getConf().asObject(result.array());
                                     if (response != null) {
                                         responseMap.put(response.requestId, response);
+                                        responseMapLock.get(response.requestId).countDown();
+                                        responseMapLock.remove(response.requestId);
                                     }
                                 }
                             }

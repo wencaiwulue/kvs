@@ -13,7 +13,7 @@ import rpc.model.requestresponse.*;
  */
 public class RemovePeerRequestProcessor implements Processor {
 
-    private static final Logger log = LogManager.getLogger(RemovePeerRequestProcessor.class);
+    private static final Logger LOGGER = LogManager.getLogger(RemovePeerRequestProcessor.class);
 
     @Override
     public boolean supports(Request req) {

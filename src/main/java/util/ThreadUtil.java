@@ -9,17 +9,17 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @since 3/25/2020 17:21
  */
 public class ThreadUtil {
-    private static final ThreadPoolExecutor pool = new ThreadPoolExecutor(Util.MIN_THREAD_POOL_SIZE, Util.MAX_THREAD_POOL_SIZE,
-            60L, TimeUnit.SECONDS, new LinkedBlockingQueue<>(), new KVSThreadFactory(), (r, executor) -> System.out.println("这里有个任务死掉了：" + r));
+    private static final ThreadPoolExecutor POOL =
+            new ThreadPoolExecutor(Util.MIN_THREAD_POOL_SIZE, Util.MAX_THREAD_POOL_SIZE, 60L, TimeUnit.SECONDS, new LinkedBlockingQueue<>(), new KVSThreadFactory(), (r, executor) -> System.out.println("这里有个任务死掉了：" + r));
 
-    private static final ScheduledThreadPoolExecutor scheduledPool = new ScheduledThreadPoolExecutor(Util.MAX_SCHEDULED_THREAD_POOL_SIZE);
+    private static final ScheduledThreadPoolExecutor SCHEDULED_POOL = new ScheduledThreadPoolExecutor(Util.MAX_SCHEDULED_THREAD_POOL_SIZE);
 
     public static ThreadPoolExecutor getThreadPool() {
-        return pool;
+        return POOL;
     }
 
     public static ScheduledThreadPoolExecutor getScheduledThreadPool() {
-        return scheduledPool;
+        return SCHEDULED_POOL;
     }
 
     public static void sleep(long millis) {
@@ -36,19 +36,14 @@ public class ThreadUtil {
         private final AtomicInteger threadNumber = new AtomicInteger(1);
         private final String namePrefix;
 
-        KVSThreadFactory() {
+        public KVSThreadFactory() {
             SecurityManager s = System.getSecurityManager();
-            group = (s != null) ? s.getThreadGroup() :
-                    Thread.currentThread().getThreadGroup();
-            namePrefix = "kvs-pool-" +
-                    poolNumber.getAndIncrement() +
-                    "-thread-";
+            group = (s != null) ? s.getThreadGroup() : Thread.currentThread().getThreadGroup();
+            namePrefix = "kvs-pool-" + poolNumber.getAndIncrement() + "-thread-";
         }
 
         public Thread newThread(Runnable r) {
-            Thread t = new Thread(group, r,
-                    namePrefix + threadNumber.getAndIncrement(),
-                    0);
+            Thread t = new Thread(group, r, namePrefix + threadNumber.getAndIncrement(), 0);
             if (t.isDaemon())
                 t.setDaemon(false);
             if (t.getPriority() != Thread.NORM_PRIORITY)

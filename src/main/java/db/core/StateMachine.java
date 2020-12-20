@@ -44,7 +44,7 @@ public class StateMachine {
             }
         }
 
-        Node.log.error("Operation:" + entry.getOperation() + " is not support.");
+        Node.LOGGER.error("Operation:" + entry.getOperation() + " is not support.");
         throw new UnsupportedOperationException("Operation:" + entry.getOperation() + " is not support.");
     }
 }

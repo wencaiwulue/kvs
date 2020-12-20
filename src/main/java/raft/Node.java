@@ -35,7 +35,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  */
 @Data
 public class Node implements Runnable {
-    public static final Logger log = LogManager.getLogger(Node.class);
+    public static final Logger LOGGER = LogManager.getLogger(Node.class);
 
     public volatile boolean start;
 
@@ -122,17 +122,17 @@ public class Node implements Runnable {
                             // todo 这里需要根据index确定是哪一个文件，并且index要做到全局递增，这个怎么办？
                             size = FileChannel.open(this.logdb.file.get(0).toPath(), StandardOpenOption.READ).size();
                         } catch (ClosedChannelException e) {
-                            log.error("who close the channel !!");
+                            LOGGER.error("who close the channel !!");
                         } catch (IOException e) {
-                            log.error(e);
+                            LOGGER.error(e);
                         }
                         InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) RpcClient.doRequest(remote, new InstallSnapshotRequest(this.address, this.currentTerm, this.logdb.dir.toString(), size));
                         if (snapshotResponse == null || !snapshotResponse.isSuccess()) {
-                            log.error("Install snapshot error, should retry?");
+                            LOGGER.error("Install snapshot error, should retry?");
                         }
                     }
 
-                    log.error("收到follower:{}的心跳回包", remote.getSocketAddress().getPort());
+                    LOGGER.error("收到follower:{}的心跳回包", remote.getSocketAddress().getPort());
                 }
                 this.nextElectTime = this.delayElectTime();
                 this.nextHeartbeatTime = System.nanoTime() + Config.HEARTBEAT_RATE.toNanos();
@@ -149,7 +149,7 @@ public class Node implements Runnable {
             return;
         }
 
-        log.error("start elect...");
+        LOGGER.error("start elect...");
         long start = System.nanoTime();
         this.writeLock.lock();
         try {
@@ -162,7 +162,7 @@ public class Node implements Runnable {
                     try {
                         VoteResponse response = (VoteResponse) RpcClient.doRequest(addr, new VoteRequest(this.address, this.currentTerm + 1, this.logdb.lastLogIndex, this.logdb.lastLogTerm));
                         if (response != null) {
-                            log.error("收到从:{}的投票回包:{}", addr, response);
+                            LOGGER.error("收到从:{}的投票回包:{}", addr, response);
                             if (response.isGrant()) {
                                 ai.addAndGet(1);
                             } else if (response.getTerm() > this.currentTerm) {
@@ -170,10 +170,10 @@ public class Node implements Runnable {
                                 this.currentTerm = response.getTerm();
                                 fail.set(true);
                             } else {
-                                log.error("竟然不投票。远端主机为: {}", addr);
+                                LOGGER.error("竟然不投票。远端主机为: {}", addr);
                             }
                         } else {
-                            log.error("可能是挂掉了。远端主机为: {}", addr);
+                            LOGGER.error("了。远端主机为: {}", addr);
                         }
                     } finally {
                         latch.countDown();
@@ -187,18 +187,19 @@ public class Node implements Runnable {
             }
             // 0-150ms, 随机一段时间，避免同时选举
             if (ai.get() > Math.ceil(this.allNodeAddresses.size() / 2D)) {// 超过半数了，成功了
-                log.error("选举成功，选出leader了{}", this.address);
+                LOGGER.error("选举成功，选出leader了{}", this.address);
                 this.currentTerm = this.currentTerm + 1;
                 this.leaderAddress = this.address;
                 this.role = Role.LEADER;
                 this.nextHeartbeatTime = -1;// 立即心跳
                 ThreadUtil.getThreadPool().execute(this.heartbeatTask);
             } else {
-                log.error("elect failed");
+                LOGGER.error("ticket: {} and expect: {}", ai.get(), Math.ceil(this.allNodeAddresses.size() / 2D));
+                LOGGER.error("elect failed");
             }
             this.nextElectTime = this.delayElectTime();// 0-150ms, 随机一段时间，避免同时选举
         } catch (InterruptedException e) {
-            log.error(e);
+            LOGGER.error(e);
         } finally {
             System.out.println("选举花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + " ms");
             this.writeLock.unlock();
@@ -234,9 +235,9 @@ public class Node implements Runnable {
         try {
             channel.write(FSTUtil.asArrayWithLength(response));
         } catch (ClosedChannelException e) {
-            log.error("这里的channel失效了, 需要重试吗?", e);
+            LOGGER.error("这里的channel失效了, 需要重试吗?", e);
         } catch (IOException e) {
-            log.error("回复失败。", e);
+            LOGGER.error("回复失败。", e);
         }
     }
 
