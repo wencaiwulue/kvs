@@ -23,8 +23,12 @@ class AppTest {
     private static final NodeAddress p2 = new NodeAddress(true, p8002);
 
     @Test
-    void addPeer() {
+    void addPeer0() {
         System.out.println(RpcClientForTest.doRequest(p0, new AddPeerRequest(new NodeAddress(true, p8001))));
+    }
+
+    @Test
+    void addPeer1() {
         System.out.println(RpcClientForTest.doRequest(p0, new AddPeerRequest(new NodeAddress(true, p8002))));
     }
 

@@ -14,12 +14,15 @@ import util.FSTUtil;
 import util.ThreadUtil;
 
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Future;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -99,7 +102,7 @@ public class Node implements Runnable {
             // electing start
             elect();
         };
-        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(electTask, 0, 10, TimeUnit.MILLISECONDS);
+        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(this.electTask, 0, 10, TimeUnit.MILLISECONDS);
 
         this.heartbeatTask = () -> {
             if (!this.start) {
@@ -136,7 +139,7 @@ public class Node implements Runnable {
                 }
                 this.nextElectTime = this.delayElectTime();
                 this.nextHeartbeatTime = System.nanoTime() + Config.HEARTBEAT_RATE.toNanos();
-//                System.out.println("成功给推迟选举");
+                LOGGER.error("成功推迟选举");
             }
         };
         ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(this.heartbeatTask, 0, 10, TimeUnit.MILLISECONDS);
@@ -157,6 +160,8 @@ public class Node implements Runnable {
             AtomicBoolean fail = new AtomicBoolean(false);
             this.role = Role.CANDIDATE;// 改变状态为candidate
             CountDownLatch latch = new CountDownLatch(this.allNodeAddressExcludeMe().size());
+            Future<?>[] futures = new Future[this.allNodeAddressExcludeMe().size()];
+            int p = 0;
             for (NodeAddress addr : this.allNodeAddressExcludeMe()) {
                 Runnable r = () -> {
                     try {
@@ -173,20 +178,25 @@ public class Node implements Runnable {
                                 LOGGER.error("竟然不投票。远端主机为: {}", addr);
                             }
                         } else {
-                            LOGGER.error("了。远端主机为: {}", addr);
+                            LOGGER.error("报错了。远端主机为: {}", addr);
                         }
                     } finally {
                         latch.countDown();
                     }
                 };
-                ThreadUtil.getThreadPool().submit(r);
+                futures[p++] = ThreadUtil.getThreadPool().submit(r);
             }
-            latch.await(Config.ELECT_RATE.toMillis(), TimeUnit.MILLISECONDS);
+            boolean a = latch.await(Config.ELECT_RATE.toMillis(), TimeUnit.MILLISECONDS);
+            if (!a) {
+                Arrays.stream(futures).forEach(e -> e.cancel(true));
+                return;
+            }
             if (fail.getAcquire()) {
                 return;
             }
             // 0-150ms, 随机一段时间，避免同时选举
-            if (ai.get() > Math.ceil(this.allNodeAddresses.size() / 2D)) {// 超过半数了，成功了
+            int i = BigDecimal.valueOf(this.allNodeAddresses.size() / 2D).setScale(0, RoundingMode.UP).intValue();
+            if (ai.get() >= i) {// 超过半数了，成功了
                 LOGGER.error("选举成功，选出leader了{}", this.address);
                 this.currentTerm = this.currentTerm + 1;
                 this.leaderAddress = this.address;
@@ -194,7 +204,7 @@ public class Node implements Runnable {
                 this.nextHeartbeatTime = -1;// 立即心跳
                 ThreadUtil.getThreadPool().submit(this.heartbeatTask);
             } else {
-                LOGGER.error("ticket: {} and expect: {}", ai.get(), Math.ceil(this.allNodeAddresses.size() / 2D));
+                LOGGER.error("ticket: {} and expect: {}", ai.get(), i);
                 LOGGER.error("elect failed");
             }
             this.nextElectTime = this.delayElectTime();// 0-150ms, 随机一段时间，避免同时选举

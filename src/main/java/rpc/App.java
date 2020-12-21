@@ -6,9 +6,13 @@ import raft.Node;
 import raft.NodeAddress;
 import util.ThreadUtil;
 
+import java.io.Serializable;
 import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**

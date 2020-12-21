@@ -21,7 +21,7 @@ import java.util.Iterator;
  * @since 3/25/2020 19:32
  */
 public class RpcServer implements Runnable {
-    private static final Logger log = LogManager.getLogger(RpcServer.class);
+    private static final Logger LOGGER = LogManager.getLogger(RpcServer.class);
 
     private Selector selector;
     private Node node;
@@ -34,7 +34,7 @@ public class RpcServer implements Runnable {
             this.bind(addr);
             this.node = node;
         } catch (IOException e) {
-            log.error("during start occurs error, shutting down...", e);
+            LOGGER.error("during start occurs error, shutting down...", e);
             this.destroy();
             Runtime.getRuntime().exit(-1);
         }
@@ -45,7 +45,7 @@ public class RpcServer implements Runnable {
         serverSocket.bind(addr);
         serverSocket.configureBlocking(false);
         serverSocket.register(selector, SelectionKey.OP_ACCEPT);
-        log.error("服务已启动，已经绑定{}", addr);
+        LOGGER.error("服务已启动，已经绑定{}", addr);
     }
 
     private void destroy() {
@@ -66,12 +66,12 @@ public class RpcServer implements Runnable {
                     try {
                         selector.close();
                     } catch (IOException ioe) {
-                        log.error("关闭selector出错楼", ioe);
+                        LOGGER.error("关闭selector出错楼", ioe);
                     }
                     break;
                 }
             } catch (Throwable x) {
-                log.error("", x);
+                LOGGER.error("", x);
                 continue;
             }
 
@@ -96,7 +96,7 @@ public class RpcServer implements Runnable {
                     channel.setOption(StandardSocketOptions.TCP_NODELAY, true);
                     channel.configureBlocking(false);
                     channel.register(selector, SelectionKey.OP_READ);
-                    log.error("已经创建链接:{}", channel.getRemoteAddress());
+                    LOGGER.error("已经创建链接:{}", channel.getRemoteAddress());
                 } else if (selectionKey.isReadable()) {
                     boolean closeSocket = false;
                     if (!processRead(selectionKey)) {
@@ -112,7 +112,7 @@ public class RpcServer implements Runnable {
         } catch (CancelledKeyException e) {
             cancelledKey(selectionKey);
         } catch (Throwable t) {
-            log.error("这次戳错啦", t);
+            LOGGER.error("这次戳错啦", t);
         }
     }
 
@@ -127,7 +127,7 @@ public class RpcServer implements Runnable {
                 try {
                     socketChannel.close();
                 } catch (Exception e) {
-                    log.error("关闭socketChannel出错啦！！！，{}", e.getMessage());
+                    LOGGER.error("关闭socketChannel出错啦！！！，{}", e.getMessage());
                 }
             }
         }
@@ -135,7 +135,7 @@ public class RpcServer implements Runnable {
             try {
                 key.channel().close();
             } catch (Exception e) {
-                log.error("关闭channel出错啦！！！，{}", e.getMessage());
+                LOGGER.error("关闭channel出错啦！！！，{}", e.getMessage());
             }
         }
     }
@@ -180,8 +180,8 @@ public class RpcServer implements Runnable {
                                     }
                                 }
                             } catch (OutOfMemoryError oom) {
-                                log.error(oom);
-                                log.error("length: " + byteBuffer.getInt());
+                                LOGGER.error(oom);
+                                LOGGER.error("length: " + byteBuffer.getInt());
                             }
                         }
                     } catch (SocketException e) {
@@ -191,7 +191,7 @@ public class RpcServer implements Runnable {
                         } catch (IOException ex) {
                             ex.printStackTrace();
                         }
-                        log.error(e.getMessage());
+                        LOGGER.error(e.getMessage());
                     } catch (ClosedChannelException e) {
                         key.channel();
                         try {
@@ -199,19 +199,19 @@ public class RpcServer implements Runnable {
                         } catch (IOException ex) {
                             ex.printStackTrace();
                         }
-                        log.error("channel关闭了");
+                        LOGGER.error("server channel关闭了");
                     } catch (IOException e) {
-                        log.error("出错了，关闭channel", e);
+                        LOGGER.error("出错了，关闭channel", e);
                         try {
                             channel.close();
                         } catch (Exception ex) {
-                            log.error(ex);
+                            LOGGER.error(ex);
                         }
                         this.key.cancel();
                     }
                 }
             } else {
-                log.error("channel disconnect, should retry or not ?");
+                LOGGER.error("channel disconnect, should retry or not ?");
             }
         }
     }

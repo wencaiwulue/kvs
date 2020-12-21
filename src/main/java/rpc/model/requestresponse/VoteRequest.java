@@ -3,6 +3,7 @@ package rpc.model.requestresponse;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 import raft.NodeAddress;
 
 /**
@@ -12,6 +13,7 @@ import raft.NodeAddress;
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
+@ToString
 public class VoteRequest extends Request {
     private static final long serialVersionUID = -6056301287980072876L;
     private NodeAddress candidateId;

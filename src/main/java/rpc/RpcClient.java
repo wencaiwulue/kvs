@@ -29,24 +29,24 @@ import java.util.function.Consumer;
  * @since 3/14/2020 15:46
  */
 public class RpcClient {
-    private static final Logger log = LogManager.getLogger(RpcClient.class);
+    private static final Logger LOGGER = LogManager.getLogger(RpcClient.class);
 
     // todo 其实这里可以是address -> list<channel>, 需要支持多个连接
-    private static final ConcurrentHashMap<NodeAddress, SocketChannel> connections = new ConcurrentHashMap<>();// 主节点于各个简单的链接
+    private static final ConcurrentHashMap<NodeAddress, SocketChannel> CONNECTIONS = new ConcurrentHashMap<>();// 主节点于各个简单的链接
     private static Selector selector;// 这个selector处理的是请求的回包
 
-    private static final ConcurrentHashMap<Integer, Response> responseMap = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<Integer, CountDownLatch> responseMapLock = new ConcurrentHashMap<>();
-    private static final LinkedBlockingDeque<SocketRequest> requestTask = new LinkedBlockingDeque<>();
-    private static final Thread writeRequestTask = new Thread(RpcClient::writeRequest, "rpc-write-out");
+    private static final ConcurrentHashMap<Integer, Response> RESPONSE_MAP = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Integer, CountDownLatch> RESPONSE_MAP_LOCK = new ConcurrentHashMap<>();
+    private static final LinkedBlockingDeque<SocketRequest> REQUEST_TASK = new LinkedBlockingDeque<>();
+    private static final Thread WRITE_REQUEST_TASK = new Thread(RpcClient::writeRequest, "rpc-write-out");
 
     static {
         try {
             selector = Selector.open();
             ThreadUtil.getThreadPool().submit(RpcClient::readResponse);
-            writeRequestTask.start();
+            WRITE_REQUEST_TASK.start();
         } catch (IOException e) {
-            log.error("at the beginning error occurred, shutting down...", e);
+            LOGGER.error("at the beginning error occurred, shutting down...", e);
             Runtime.getRuntime().exit(-1);
         }
     }
@@ -54,50 +54,50 @@ public class RpcClient {
     private static SocketChannel getConnection(NodeAddress remote) {
         if (remote == null) return null;
 
-        if (!connections.containsKey(remote) || !connections.get(remote).isOpen() || !connections.get(remote).isConnected()) {
+        if (!CONNECTIONS.containsKey(remote) || !CONNECTIONS.get(remote).isOpen() || !CONNECTIONS.get(remote).isConnected()) {
             synchronized (remote.toString().intern()) {
-                if (!connections.containsKey(remote) || !connections.get(remote).isOpen() || !connections.get(remote).isConnected()) {
+                if (!CONNECTIONS.containsKey(remote) || !CONNECTIONS.get(remote).isOpen() || !CONNECTIONS.get(remote).isConnected()) {
                     try {
                         SocketChannel channel = SocketChannel.open(remote.getSocketAddress());
                         channel.setOption(StandardSocketOptions.TCP_NODELAY, true);
                         channel.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
                         channel.configureBlocking(false);
                         channel.register(selector, SelectionKey.OP_READ);
-                        connections.put(remote, channel);
+                        CONNECTIONS.put(remote, channel);
                     } catch (ConnectException e) {
-                        log.error("remote: {}, 连接失败, message: {}。", remote.getSocketAddress().getPort(), e.getMessage());
+                        LOGGER.error("remote: {}, 连接失败, message: {}。", remote.getSocketAddress().getPort(), e.getMessage());
                         remote.alive = false;
                     } catch (IOException e) {
-                        log.error(e);
+                        LOGGER.error(e);
                         remote.alive = false;
                     }
                 }
             }
         }
-        return connections.get(remote);
+        return CONNECTIONS.get(remote);
     }
 
     public static Response doRequest(NodeAddress remote, final Request request) {
         if (remote == null || !remote.alive) return null;
 
         CountDownLatch latch = new CountDownLatch(1);
-        requestTask.addLast(new SocketRequest(remote, request));
-        responseMapLock.put(request.requestId, latch);
-        LockSupport.unpark(writeRequestTask);
+        REQUEST_TASK.addLast(new SocketRequest(remote, request));
+        RESPONSE_MAP_LOCK.put(request.requestId, latch);
+        LockSupport.unpark(WRITE_REQUEST_TASK);
 
         try {
-            latch.await(5, TimeUnit.SECONDS);
+            boolean a = latch.await(5, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
-            log.error("waiting for response timeout !!!", e);
+            LOGGER.error("waiting for response timeout !!!", e);
             return null;
         }
-        return responseMap.remove(request.requestId);
+        return RESPONSE_MAP.remove(request.requestId);
     }
 
     private static void writeRequest() {
         while (true) {
-            while (!requestTask.isEmpty()) {
-                SocketRequest socketRequest = requestTask.poll();
+            while (!REQUEST_TASK.isEmpty()) {
+                SocketRequest socketRequest = REQUEST_TASK.poll();
                 if (socketRequest != null) {
                     boolean success = false;
                     int retry = 0;
@@ -110,7 +110,7 @@ public class RpcClient {
                                 success = true;
                                 break;
                             } catch (IOException e) {
-                                log.error("write request error ", e); // 这里可能出现的情况是对方关闭了channel，该怎么办呢？
+                                LOGGER.error("write request error ", e); // 这里可能出现的情况是对方关闭了channel，该怎么办呢？
                             }
                         }
                     }
@@ -140,14 +140,14 @@ public class RpcClient {
                                 if (len == channel.read(result)) {
                                     Response response = (Response) FSTUtil.getConf().asObject(result.array());
                                     if (response != null) {
-                                        responseMap.put(response.requestId, response);
-                                        responseMapLock.get(response.requestId).countDown();
-                                        responseMapLock.remove(response.requestId);
+                                        RESPONSE_MAP.put(response.requestId, response);
+                                        RESPONSE_MAP_LOCK.get(response.requestId).countDown();
+                                        RESPONSE_MAP_LOCK.remove(response.requestId);
                                     }
                                 }
                             }
                         } catch (OutOfMemoryError e) {
-                            log.error(e);
+                            LOGGER.error(e);
                             System.out.println("len: " + contentLen.getInt());
                         }
                     } else if (read < 0) {
@@ -163,7 +163,7 @@ public class RpcClient {
                     } catch (IOException ioException) {
                         ioException.printStackTrace();
                     }
-                    log.error(e.getMessage());
+                    LOGGER.error(e.getMessage());
                 } catch (ClosedChannelException e) {
                     key.channel();
                     try {
@@ -171,7 +171,7 @@ public class RpcClient {
                     } catch (IOException ioException) {
                         ioException.printStackTrace();
                     }
-                    log.error("channel关闭了");
+                    LOGGER.error("channel关闭了");
                 } catch (IOException e) {
                     e.printStackTrace();
                     if (e.getMessage().contains("An existing connection was forcibly closed by the remote host")) {

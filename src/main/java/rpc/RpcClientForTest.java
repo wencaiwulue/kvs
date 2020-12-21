@@ -35,16 +35,16 @@ public class RpcClientForTest {
 
     public static Selector selector;// 这个selector处理的是请求的回包
 
-    private static final ConcurrentHashMap<Integer, Response> responseMap = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<Integer, CountDownLatch> responseMapLock = new ConcurrentHashMap<>();
-    private static final LinkedBlockingDeque<SocketRequest> requestTask = new LinkedBlockingDeque<>();
-    private static final Thread writeRequestTask = new Thread(RpcClientForTest::writeRequest);
+    private static final ConcurrentHashMap<Integer, Response> RESPONSE_MAP = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Integer, CountDownLatch> RESPONSE_MAP_LOCK = new ConcurrentHashMap<>();
+    private static final LinkedBlockingDeque<SocketRequest> REQUEST_TASK = new LinkedBlockingDeque<>();
+    private static final Thread WRITE_REQUEST_TASK = new Thread(RpcClientForTest::writeRequest);
 
     static {
         try {
             selector = Selector.open();
             ThreadUtil.getThreadPool().submit(RpcClientForTest::readResponse);
-            writeRequestTask.start();
+            WRITE_REQUEST_TASK.start();
         } catch (IOException e) {
             LOGGER.error("at the beginning error occurred, shutting down...", e);
             Runtime.getRuntime().exit(-1);
@@ -55,22 +55,27 @@ public class RpcClientForTest {
         if (remote == null /*|| !remote.alive*/) return null;
 
         CountDownLatch latch = new CountDownLatch(1);
-        requestTask.addLast(new SocketRequest(remote, request));
-        responseMapLock.put(request.requestId, latch);
-        LockSupport.unpark(writeRequestTask);
+        REQUEST_TASK.addLast(new SocketRequest(remote, request));
+        RESPONSE_MAP_LOCK.put(request.requestId, latch);
+        LockSupport.unpark(WRITE_REQUEST_TASK);
 
         try {
-            latch.await(5, TimeUnit.SECONDS);
+            boolean b = latch.await(5, TimeUnit.SECONDS);
+            if (!b) {
+                System.out.printf("b:%s\n", b);
+                return null;
+            }
         } catch (InterruptedException e) {
             LOGGER.error(e);
+            System.out.println("error");
         }
-        return responseMap.remove(request.requestId);
+        return RESPONSE_MAP.remove(request.requestId);
     }
 
     private static void writeRequest() {
         while (true) {
-            while (!requestTask.isEmpty()) {
-                SocketRequest socketRequest = requestTask.peek();
+            while (!REQUEST_TASK.isEmpty()) {
+                SocketRequest socketRequest = REQUEST_TASK.peek();
                 if (socketRequest != null) {
                     boolean success = false;
                     SocketChannel channel = getConnection(socketRequest.address);
@@ -79,7 +84,7 @@ public class RpcClientForTest {
                             int write = channel.write(FSTUtil.asArrayWithLength(socketRequest.request));
                             if (write <= 0) throw new IOException("魔鬼！！！");
                             success = true;
-                            requestTask.poll();
+                            REQUEST_TASK.poll();
                         } catch (IOException e) {
                             LOGGER.error(e); // 这里可能出现的情况是对方关闭了channel，该怎么办呢？
                             success = false;
@@ -113,9 +118,9 @@ public class RpcClientForTest {
                             if (len == channel.read(result)) {
                                 Response response = (Response) FSTUtil.getConf().asObject(result.array());
                                 if (response != null) {
-                                    responseMap.put(response.requestId, response);
-                                    responseMapLock.get(response.requestId).countDown();
-                                    responseMapLock.remove(response.requestId);
+                                    RESPONSE_MAP.put(response.requestId, response);
+                                    RESPONSE_MAP_LOCK.get(response.requestId).countDown();
+                                    RESPONSE_MAP_LOCK.remove(response.requestId);
                                 }
                             }
                         }
