@@ -189,6 +189,7 @@ public class Node implements Runnable {
             boolean a = latch.await(Config.ELECT_RATE.toMillis(), TimeUnit.MILLISECONDS);
             if (!a) {
                 Arrays.stream(futures).forEach(e -> e.cancel(true));
+                LOGGER.error("elect timeout, cancel all task");
                 return;
             }
             if (fail.getAcquire()) {

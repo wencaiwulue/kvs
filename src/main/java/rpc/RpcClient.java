@@ -87,8 +87,12 @@ public class RpcClient {
 
         try {
             boolean a = latch.await(5, TimeUnit.SECONDS);
+            if (!a){
+                LOGGER.error("waiting for response timeout !!!");
+                return null;
+            }
         } catch (InterruptedException e) {
-            LOGGER.error("waiting for response timeout !!!", e);
+            LOGGER.error("waiting for response interrupted !!!", e);
             return null;
         }
         return RESPONSE_MAP.remove(request.requestId);

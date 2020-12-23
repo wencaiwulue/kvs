@@ -20,8 +20,25 @@ public class AddPeerRequestProcessor implements Processor {
         return req instanceof AddPeerRequest;
     }
 
-    @Override
-    public Response process(Request req, Node node) {
+    //  fake code:
+    //
+    //  if (node isn't leader) {
+    //      if (leader is null) {
+    //           means cluster is just start, every node don't know each other,
+    //           return
+    //      } else {
+    //          if (sender == node.leader) {
+    //             return
+    //          } else {
+    //             redirect to leader, let leader to notify echo nodes
+    //        }
+    //      }
+    //  } else {
+    //      notify echo nodes
+    //      return
+    //  }
+  @Override
+  public Response process(Request req, Node node) {
         AddPeerRequest request = (AddPeerRequest) req;
 
         node.allNodeAddresses.add(request.getPeer());
@@ -32,12 +49,12 @@ public class AddPeerRequestProcessor implements Processor {
 
         if (!node.isLeader()) {
             if (node.leaderAddress == null) {
-                return RpcClient.doRequest(request.getPeer(), new AddPeerRequest(node.address, node.address));
+                return new AddPeerResponse();// exit 2
             } else {
-                if (request.getPeer() == null) {
-                    return RpcClient.doRequest(node.leaderAddress, request);
+                if (node.leaderAddress.equals(request.getSender())) {
+                  return new AddPeerResponse();// exit 3
                 } else {
-                    return new AddPeerResponse();// exit 2
+                  return RpcClient.doRequest(node.leaderAddress, request);
                 }
             }
         } else {
@@ -47,6 +64,7 @@ public class AddPeerRequestProcessor implements Processor {
             for (NodeAddress nodeAddress : node.allNodeAddressExcludeMe()) {
                 RpcClient.doRequest(nodeAddress, request);
             }
+            // means this node is just power up, need to synchronize data
             PowerResponse response = (PowerResponse) RpcClient.doRequest(request.getPeer(), new PowerRequest(false, false));
             if (response != null && response.isSuccess()) {
                 return new AddPeerResponse();

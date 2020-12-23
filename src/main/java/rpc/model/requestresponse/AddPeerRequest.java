@@ -25,7 +25,4 @@ public class AddPeerRequest extends Request {
         this.peer = peer;
     }
 
-    public NodeAddress getPeer() {
-        return peer;
-    }
 }
