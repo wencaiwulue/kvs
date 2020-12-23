@@ -143,7 +143,6 @@ public class RpcServer implements Runnable {
     private boolean processRead(SelectionKey key) {
         try {
             ThreadUtil.getThreadPool().submit(new Handler(key, node));
-//            new Handler(key, node).run();
         } catch (Exception e) {
             return false;
         }
@@ -185,7 +184,7 @@ public class RpcServer implements Runnable {
                             }
                         }
                     } catch (SocketException e) {
-                        key.channel();
+                        this.key.cancel();
                         try {
                             channel.close();
                         } catch (IOException ex) {
@@ -193,7 +192,7 @@ public class RpcServer implements Runnable {
                         }
                         LOGGER.error(e.getMessage());
                     } catch (ClosedChannelException e) {
-                        key.channel();
+                        this.key.cancel();
                         try {
                             channel.close();
                         } catch (IOException ex) {
@@ -201,13 +200,13 @@ public class RpcServer implements Runnable {
                         }
                         LOGGER.error("server channel关闭了");
                     } catch (IOException e) {
+                        this.key.cancel();
                         LOGGER.error("出错了，关闭channel", e);
                         try {
                             channel.close();
                         } catch (Exception ex) {
                             LOGGER.error(ex);
                         }
-                        this.key.cancel();
                     }
                 }
             } else {

@@ -37,7 +37,7 @@ public class RpcClient {
 
     private static final ConcurrentHashMap<Integer, Response> RESPONSE_MAP = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Integer, CountDownLatch> RESPONSE_MAP_LOCK = new ConcurrentHashMap<>();
-    private static final LinkedBlockingDeque<SocketRequest> REQUEST_TASK = new LinkedBlockingDeque<>();
+    private static final LinkedBlockingDeque<SocketRequest> REQUEST_TASK = new LinkedBlockingDeque<>(1000 * 1000);
     private static final Thread WRITE_REQUEST_TASK = new Thread(RpcClient::writeRequest, "rpc-write-out");
 
     static {
@@ -66,10 +66,10 @@ public class RpcClient {
                         CONNECTIONS.put(remote, channel);
                     } catch (ConnectException e) {
                         LOGGER.error("remote: {}, 连接失败, message: {}。", remote.getSocketAddress().getPort(), e.getMessage());
-                        remote.alive = false;
+//                        remote.alive = false;
                     } catch (IOException e) {
                         LOGGER.error(e);
-                        remote.alive = false;
+//                        remote.alive = false;
                     }
                 }
             }
@@ -78,7 +78,7 @@ public class RpcClient {
     }
 
     public static Response doRequest(NodeAddress remote, final Request request) {
-        if (remote == null || !remote.alive) return null;
+        if (remote == null /*|| !remote.alive*/) return null;
 
         CountDownLatch latch = new CountDownLatch(1);
         REQUEST_TASK.addLast(new SocketRequest(remote, request));
@@ -87,7 +87,7 @@ public class RpcClient {
 
         try {
             boolean a = latch.await(5, TimeUnit.SECONDS);
-            if (!a){
+            if (!a) {
                 LOGGER.error("waiting for response timeout !!!");
                 return null;
             }
@@ -107,7 +107,7 @@ public class RpcClient {
                     int retry = 0;
                     while (retry++ < 3) {
                         SocketChannel channel = getConnection(socketRequest.address);
-                        if (channel != null && socketRequest.address.alive) {
+                        if (channel != null /*&& socketRequest.address.alive*/) {
                             try {
                                 int write = channel.write(FSTUtil.asArrayWithLength(socketRequest.request));
                                 if (write <= 0) throw new IOException("魔鬼！！！");
@@ -119,7 +119,8 @@ public class RpcClient {
                         }
                     }
                     if (!success) {
-                        socketRequest.address.alive = false;
+                        LOGGER.error("not success");
+//                        socketRequest.address.alive = false;
                     }
                 }
             }
@@ -182,7 +183,8 @@ public class RpcClient {
                         key.cancel();
                         try {
                             channel.close();
-                        } catch (Exception ignored) {
+                        } catch (Exception exception) {
+                            LOGGER.error("read response error. :{}", exception.getMessage());
                         }
                     }
                 }

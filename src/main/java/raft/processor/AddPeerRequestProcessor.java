@@ -43,9 +43,9 @@ public class AddPeerRequestProcessor implements Processor {
 
         node.allNodeAddresses.add(request.getPeer());
 
-        if (request.getPeer().equals(request.getSender())) {
-            return new AddPeerResponse();// 非主节点，终结 exit 1
-        }
+//        if (request.getPeer().equals(request.getSender())) {
+//            return new AddPeerResponse();// 非主节点，终结 exit 1
+//        }
 
         if (!node.isLeader()) {
             if (node.leaderAddress == null) {

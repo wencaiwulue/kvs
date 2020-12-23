@@ -54,7 +54,7 @@ public class Node implements Runnable {
     private volatile int lastAppliedTerm = 0;
     public volatile long nextIndex;
 
-    public volatile long nextElectTime = this.delayElectTime();// 下次选举时间，总是会因为心跳而推迟，会在因为主leader down后开始选举
+    public volatile long nextElectTime = this.nextElectTime();// 下次选举时间，总是会因为心跳而推迟，会在因为主leader down后开始选举
     public volatile long nextHeartbeatTime /*= System.nanoTime() + this.heartBeatRate*/;// 下次心跳时间。对leader有用
     //150ms -- 300ms randomized  超时时间,选举的时候，如果主节点挂了，则所有的节点开始timeout，然后最先timeout结束的节点变为candidate，
     // 参见竞选，然后发送竞选类型的请求，如果半数以上统一，则广播给所有人，
@@ -89,7 +89,6 @@ public class Node implements Runnable {
 
     @Override
     public void run() {
-
         this.electTask = () -> {
             if (!this.start) {
                 return;
@@ -115,7 +114,10 @@ public class Node implements Runnable {
 
             if (isLeader()) {// 如果自己是主领导，就需要给各个节点发送心跳包
                 for (NodeAddress remote : this.allNodeAddressExcludeMe()) {
-                    if (!remote.alive) continue;
+//                    if (!remote.alive) {
+//                        LOGGER.error("remote node is down");
+//                        continue;
+//                    }
                     Response response = RpcClient.doRequest(remote, new AppendEntriesRequest(Collections.emptyList(), this.address, this.currentTerm, this.lastAppliedTerm, this.lastAppliedIndex.intValue(), this.committedIndex));
 
                     // install snapshot
@@ -137,7 +139,7 @@ public class Node implements Runnable {
 
                     LOGGER.error("收到follower:{}的心跳回包", remote.getSocketAddress().getPort());
                 }
-                this.nextElectTime = this.delayElectTime();
+                this.nextElectTime = this.nextElectTime();
                 this.nextHeartbeatTime = System.nanoTime() + Config.HEARTBEAT_RATE.toNanos();
                 LOGGER.error("成功推迟选举");
             }
@@ -149,6 +151,7 @@ public class Node implements Runnable {
     @SuppressWarnings("NonAtomicOperationOnVolatileField")
     private void elect() {
         if (this.allNodeAddressExcludeMe().isEmpty()) { // only one node
+            LOGGER.error("singleton cluster");
             return;
         }
 
@@ -186,11 +189,16 @@ public class Node implements Runnable {
                 };
                 futures[p++] = ThreadUtil.getThreadPool().submit(r);
             }
-            boolean a = latch.await(Config.ELECT_RATE.toMillis(), TimeUnit.MILLISECONDS);
-            if (!a) {
+            try {
+                boolean a = latch.await(Config.ELECT_RATE.toMillis(), TimeUnit.MILLISECONDS);
+                if (!a) {
+                    Arrays.stream(futures).forEach(e -> e.cancel(true));
+                    LOGGER.error("elect timeout, cancel all task");
+                    return;
+                }
+            } catch (InterruptedException exception) {
                 Arrays.stream(futures).forEach(e -> e.cancel(true));
-                LOGGER.error("elect timeout, cancel all task");
-                return;
+                LOGGER.error("elect interrupted, cancel all task");
             }
             if (fail.getAcquire()) {
                 return;
@@ -208,9 +216,7 @@ public class Node implements Runnable {
                 LOGGER.error("ticket: {} and expect: {}", ai.get(), i);
                 LOGGER.error("elect failed");
             }
-            this.nextElectTime = this.delayElectTime();// 0-150ms, 随机一段时间，避免同时选举
-        } catch (InterruptedException e) {
-            LOGGER.error(e);
+            this.nextElectTime = this.nextElectTime();// 0-150ms, 随机一段时间，避免同时选举
         } finally {
             System.out.println("选举花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + " ms");
             this.writeLock.unlock();
@@ -258,7 +264,7 @@ public class Node implements Runnable {
         return nodeAddresses;
     }
 
-    public long delayElectTime() {
+    public long nextElectTime() {
         return System.nanoTime() + Config.ELECT_RATE.toNanos() + TimeUnit.MILLISECONDS.toNanos(ThreadLocalRandom.current().nextInt(100));// randomize 0--100 ms
     }
 

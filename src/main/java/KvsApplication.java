@@ -30,7 +30,7 @@ public class KvsApplication {
 //        NodeAddress localhost1 = new NodeAddress(true, new InetSocketAddress("localhost", 8001));
 //        NodeAddress localhost2 = new NodeAddress(true, new InetSocketAddress("localhost", 8002));
 //        HashSet<NodeAddress> nodeAddresses = new HashSet<>(Arrays.asList(localhost0, localhost1, localhost2));
-        App app = new App(new NodeAddress(true, new InetSocketAddress("localhost", port))/*, nodeAddresses*/);
+        App app = new App(new NodeAddress( new InetSocketAddress("localhost", port))/*, nodeAddresses*/);
         app.start();
     }
 }

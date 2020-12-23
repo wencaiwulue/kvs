@@ -25,7 +25,7 @@ public class App {
     private final Node node;
 
     public App(InetSocketAddress address) {
-        this(new NodeAddress(true, address));
+        this(new NodeAddress(address));
     }
 
     public App(NodeAddress address) {

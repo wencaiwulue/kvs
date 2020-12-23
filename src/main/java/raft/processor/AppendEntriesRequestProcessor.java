@@ -24,14 +24,14 @@ public class AppendEntriesRequestProcessor implements Processor {
     public Response process(Request req, Node node) {
         node.writeLock.lock();
         try {
-            node.nextElectTime = node.delayElectTime();// push off elect
+            node.nextElectTime = node.nextElectTime();// push off elect
             AppendEntriesRequest request = (AppendEntriesRequest) req;
             LOGGER.error("收到来自leader:{}的心跳, term:{}", request.getLeaderId().getSocketAddress().getPort(), request.getTerm());
             if (request.getTerm() < node.currentTerm) {
                 return new AppendEntriesResponse(node.currentTerm, false, node.logdb.lastLogIndex);
             } else if (request.getTerm() > node.currentTerm) {
                 node.currentTerm = request.getTerm();
-                node.leaderAddress = null;
+                node.leaderAddress = request.getLeaderId();
                 node.lastVoteFor = null;
                 node.role = Role.FOLLOWER;
             }
@@ -42,7 +42,7 @@ public class AppendEntriesRequestProcessor implements Processor {
                     node.leaderAddress = null;
                     node.lastVoteFor = null;
                     node.role = Role.FOLLOWER;
-//                    node.nextElectTime = -1;// 立即重新选举
+                    node.nextElectTime = -1;// 立即重新选举
 //                    ThreadUtil.getThreadPool().execute(node.elect);
                 }
                 return new AppendEntriesResponse(request.getTerm() + 1, false, node.logdb.lastLogIndex);

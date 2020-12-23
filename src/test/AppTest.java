@@ -18,23 +18,27 @@ class AppTest {
     private static final InetSocketAddress p8002 = new InetSocketAddress("localhost", 8002);
     private static final InetSocketAddress p8003 = new InetSocketAddress("localhost", 8003);
     private static final InetSocketAddress p8004 = new InetSocketAddress("localhost", 8004);
-    private static final NodeAddress p0 = new NodeAddress(true, p8000);
-    private static final NodeAddress p1 = new NodeAddress(true, p8001);
-    private static final NodeAddress p2 = new NodeAddress(true, p8002);
+    private static final NodeAddress p0 = new NodeAddress(p8000);
+    private static final NodeAddress p1 = new NodeAddress(p8001);
+    private static final NodeAddress p2 = new NodeAddress(p8002);
 
     @Test
     void addPeer0() {
-        System.out.println(RpcClientForTest.doRequest(p0, new AddPeerRequest(new NodeAddress(true, p8001))));
+        System.out.println(RpcClientForTest.doRequest(p0, new AddPeerRequest(new NodeAddress(p8001))));
+        System.out.println(RpcClientForTest.doRequest(p1, new AddPeerRequest(new NodeAddress(p8000))));
     }
 
     @Test
     void addPeer1() {
-        System.out.println(RpcClientForTest.doRequest(p0, new AddPeerRequest(new NodeAddress(true, p8002))));
+        System.out.println(RpcClientForTest.doRequest(p0, new AddPeerRequest(new NodeAddress(p8002))));
+        System.out.println(RpcClientForTest.doRequest(p1, new AddPeerRequest(new NodeAddress(p8002))));
+        System.out.println(RpcClientForTest.doRequest(p2, new AddPeerRequest(new NodeAddress(p8000))));
+        System.out.println(RpcClientForTest.doRequest(p2, new AddPeerRequest(new NodeAddress(p8001))));
     }
 
     @Test
     void removePeer() {
-        RpcClientForTest.doRequest(p2, new RemovePeerRequest(new NodeAddress(true, p8000)));
+        RpcClientForTest.doRequest(p2, new RemovePeerRequest(new NodeAddress(p8000)));
     }
 
     @Test

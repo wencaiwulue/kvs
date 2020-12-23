@@ -79,7 +79,7 @@ public class RpcClientForTest {
                 if (socketRequest != null) {
                     boolean success = false;
                     SocketChannel channel = getConnection(socketRequest.address);
-                    if (channel != null && socketRequest.address.alive) {
+                    if (channel != null /*&& socketRequest.address.alive*/) {
                         try {
                             int write = channel.write(FSTUtil.asArrayWithLength(socketRequest.request));
                             if (write <= 0) throw new IOException("魔鬼！！！");
@@ -93,7 +93,7 @@ public class RpcClientForTest {
                     recycle(socketRequest.address, channel);
 
                     if (!success) {
-                        socketRequest.address.alive = false;
+//                        socketRequest.address.alive = false;
                     }
                 }
             }
@@ -175,13 +175,13 @@ public class RpcClientForTest {
                                 return connect;
                             });
 
-                            remote.alive = true;
+//                            remote.alive = true;
                         } catch (ConnectException e) {
                             LOGGER.error("remote:{}, 连接失败, message:{}。", remote.getSocketAddress().getPort(), e.getMessage());
-                            remote.alive = false;
+//                            remote.alive = false;
                         } catch (IOException e) {
                             LOGGER.error(e);
-                            remote.alive = false;
+//                            remote.alive = false;
                         }
                     }
                 }
