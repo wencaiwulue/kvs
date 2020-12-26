@@ -1,6 +1,5 @@
 package util.thread;
 
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 public interface ScheduleService {

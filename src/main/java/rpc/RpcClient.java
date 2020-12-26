@@ -81,7 +81,8 @@ public class RpcClient {
         if (remote == null /*|| !remote.alive*/) return null;
 
         CountDownLatch latch = new CountDownLatch(1);
-        REQUEST_TASK.addLast(new SocketRequest(remote, request));
+        SocketRequest request1 = new SocketRequest(remote, request);
+        REQUEST_TASK.addLast(request1);
         RESPONSE_MAP_LOCK.put(request.requestId, latch);
         LockSupport.unpark(WRITE_REQUEST_TASK);
 
@@ -89,20 +90,24 @@ public class RpcClient {
             boolean a = latch.await(5, TimeUnit.SECONDS);
             if (!a) {
                 LOGGER.error("waiting for response timeout !!!");
+                request1.cancelled = true;
                 return null;
             }
         } catch (InterruptedException e) {
             LOGGER.error("waiting for response interrupted !!!", e);
+            request1.cancelled = true;
             return null;
         }
-        return RESPONSE_MAP.remove(request.requestId);
+        Response response = RESPONSE_MAP.remove(request.requestId);
+        LOGGER.error("response info: {}", new String(FSTUtil.getConf().asByteArray(response)));
+        return response;
     }
 
     private static void writeRequest() {
         while (true) {
             while (!REQUEST_TASK.isEmpty()) {
                 SocketRequest socketRequest = REQUEST_TASK.poll();
-                if (socketRequest != null) {
+                if (socketRequest != null && !socketRequest.cancelled) {
                     boolean success = false;
                     int retry = 0;
                     while (retry++ < 3) {
@@ -205,10 +210,12 @@ public class RpcClient {
     private static class SocketRequest {
         public NodeAddress address;
         public Request request;
+        public boolean cancelled;
 
         private SocketRequest(NodeAddress address, Request request) {
             this.address = address;
             this.request = request;
+            this.cancelled = false;
         }
     }
 
