@@ -50,7 +50,7 @@ public class TimeWheel {
               this.p[i] = (int) remainder;
               // drop task to lower level
               if (quotient == 0) {
-                if (i > 0 && offset() > 0) {
+                if (i > 0) {
                   long l = this.p[i] + this.dial * i;
                   List<Task> taskList = this.tasks[(int) l];
                   for (Task task : taskList) {
@@ -80,8 +80,7 @@ public class TimeWheel {
             taskList.clear();
           }
         };
-    ThreadUtil.getThreadPool().execute(r);
-    //    new Thread(r).start();
+    ThreadUtil.getThreadPool().submit(r);
   }
 
   private void sleepSilently() {
@@ -105,16 +104,6 @@ public class TimeWheel {
     return task;
   }
 
-  public long offset() {
-    long a = 0;
-    for (int i = this.level - 1; i > 0; i--) {
-      if (this.p[i] > 0) {
-        return i * this.dial + this.p[i];
-      }
-    }
-    return a;
-  }
-
   @AllArgsConstructor
   @NoArgsConstructor
   @Getter
@@ -134,7 +123,7 @@ public class TimeWheel {
     Runnable runnable =
         () -> System.out.println("current timestamp: " + System.currentTimeMillis() / 1000);
     TimeWheel timeWheel = new TimeWheel(3, 60, 1);
-    timeWheel.scheduleAtFixedRate(runnable, 0, 5, TimeUnit.SECONDS);
+    timeWheel.scheduleAtFixedRate(runnable, 0, 2, TimeUnit.SECONDS);
     Thread.sleep(1000 * 1000);
   }
 }
