@@ -8,8 +8,10 @@ import util.ThreadUtil;
 
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Random;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.LockSupport;
+import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
 public class TimeWheel {
@@ -29,14 +31,15 @@ public class TimeWheel {
         for (int i = 0; i < this.tasks.length; i++) {
             this.tasks[i] = new LinkedList<>();
         }
+        this.init();
     }
 
-    {
+    private void init() {
         Runnable r =
                 () -> {
                     this.p[0] += 1;
-
                     // get effect level
+                    //1, just image the progress of clock: 23:59:59 --> 00:00:00
                     int e = 0;
                     for (int i = 0; i < this.level; i++) {
                         long quotient = this.p[i] / this.dial;
@@ -49,7 +52,7 @@ public class TimeWheel {
                             e = i + 1;
                             if (this.p[this.level - 1] == this.dial) {
                                 e = this.level - 1;
-                                // clear all
+                                // 23:59:59 --> 00:00:00
                                 for (int j = 0; j < this.level; j++) {
                                     this.p[j] = 0;
                                 }
@@ -58,33 +61,54 @@ public class TimeWheel {
                         }
                     }
 
+                    // 2, drop the task to the lower level
                     for (int i = e; i > 0; i--) {
                         long l = this.p[i] + this.dial * i;
                         List<Task> taskList = this.tasks[(int) l];
                         for (Task task : taskList) {
-                            int t = (int) task.unit.toMillis(task.period);
-                            double remind = t % (Math.pow(this.dial, i));
-                            long position = (long) ((remind + this.p[i - 1]) % this.dial);
-                            this.tasks[(int) position].add(task);
+                            int finalI = i;
+                            Runnable runnable = () -> {
+                                int t = (int) task.unit.toMillis(task.period);
+                                double remind = t % (Math.pow(this.dial, finalI));
+                                long position = (long) ((remind + this.p[finalI - 1]) % this.dial);
+                                this.tasks[(int) position].add(task);
+                            };
+                            ThreadUtil.getThreadPool().submit(runnable);
                         }
                         taskList.clear();
                     }
 
+                    // 3, run the lowest level task
                     List<Task> taskList = this.tasks[this.p[0]];
                     for (Task task : taskList) {
                         ThreadUtil.getThreadPool().execute(task.runnable);
-                        this.scheduleAtFixedRate(task.runnable, 0, task.period, task.unit);
+                        ThreadUtil.getThreadPool().submit(() -> this.scheduleAtFixedRateInner(task));
                     }
                     taskList.clear();
                 };
-
-        FakeTimeWheel fakeTimeWheel = new FakeTimeWheel();
-        fakeTimeWheel.scheduleAtFixedRate(r, 0, 1, TimeUnit.MILLISECONDS);
+        ThreadUtil.getThreadPool().submit(() -> {
+            //noinspection InfiniteLoopStatement
+            while (true) {
+                // maybe using parkUntil ?? a abstract time
+                LockSupport.parkNanos(1000 * 1000 * this.step);
+                ThreadUtil.getThreadPool().submit(r);
+            }
+        });
     }
 
-    public Task scheduleAtFixedRate(Runnable command, long initialDelay, long period, TimeUnit unit) {
-        Task task = Task.of(command, initialDelay, period, unit);
-        int l = (int) unit.toMillis(initialDelay + period);
+    public FakeDelayQueue.DelayTask scheduleAtFixedRate(Runnable command, long initialDelay, long period, TimeUnit unit) {
+        Consumer<FakeDelayQueue.DelayTask> c = delayTask -> {
+            this.scheduleAtFixedRateInner(delayTask.task);
+            delayTask.task.runnable.run();
+        };
+        FakeDelayQueue.DelayTask delayTask = FakeDelayQueue.DelayTask
+                .of(command, initialDelay, period, unit, t -> ThreadUtil.getThreadPool().submit(() -> c.accept(t)));
+        FakeDelayQueue.delay(delayTask);
+        return delayTask;
+    }
+
+    private Task scheduleAtFixedRateInner(Task task) {
+        int l = (int) task.unit.toMillis(task.period);
 
         int level = (int) (Math.log(l) / Math.log(this.dial));
         int bucket = (int) (l / Math.pow(this.dial, level));
@@ -111,27 +135,29 @@ public class TimeWheel {
     }
 
     public static void main(String[] args) throws InterruptedException {
-        Runnable runnable =
-                () -> System.out.println("current timestamp: " + System.currentTimeMillis() / 1000);
-        TimeWheel timeWheel = new TimeWheel(2, 60, 1);
-        timeWheel.scheduleAtFixedRate(runnable, 0, 2, TimeUnit.SECONDS);
-//        Thread.sleep(5);
-        timeWheel.scheduleAtFixedRate(() -> System.out.println(System.currentTimeMillis() / 1000), 0, 1, TimeUnit.SECONDS);
-        IntStream.range(0, 1000 * 100)
-                .forEach(e -> timeWheel.scheduleAtFixedRate(() -> {
-                }, 0, 1, TimeUnit.SECONDS));
+        AtomicLong ad = new AtomicLong(0);
+        int i = 200 * 10000;
+        int j = 1000 * 1000;
+        AtomicLong start = new AtomicLong(System.nanoTime());
+        Runnable r = () -> {
+            long l = ad.incrementAndGet();
+            if (l % j == 0) {
+                long end = System.nanoTime();
+                System.out.println(TimeUnit.NANOSECONDS.toSeconds(end - start.get()));
+                start.set(end);
+                System.out.println(l);
+            }
+        };
+        Runnable empty = () -> {
+        };
+        TimeWheel timeWheel = new TimeWheel(4, 60, 1);
+//        IntStream.range(0, i)
+//                .forEach(e -> timeWheel.scheduleAtFixedRate(empty, 0, 123, TimeUnit.SECONDS));
+//        IntStream.range(0, i)
+//                .forEach(e -> timeWheel.scheduleAtFixedRate(empty, 0, 39, TimeUnit.SECONDS));
+        IntStream.range(0, j)
+                .forEach(e -> timeWheel.scheduleAtFixedRate(r, 5, 3, TimeUnit.SECONDS));
 
-        IntStream.range(0, 1000 * 100)
-                .forEach(e -> timeWheel.scheduleAtFixedRate(() -> {
-                }, 0, 2, TimeUnit.SECONDS));
-
-        IntStream.range(0, 1000 * 100)
-                .forEach(e -> timeWheel.scheduleAtFixedRate(() -> {
-                }, 0, 3, TimeUnit.SECONDS));
-        Random random = new Random();
-        for (int i = 10; i > 0; i--) {
-            System.out.println(random.doubles());
-        }
-        Thread.sleep(1000 * 1000000);
+        Thread.sleep(Long.MAX_VALUE);
     }
 }

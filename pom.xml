@@ -19,6 +19,7 @@
         <jedis.version>2.9.3</jedis.version>
         <junit.version>5.6.2</junit.version>
         <ecplise-collection.version>10.2.0</ecplise-collection.version>
+        <jetbrains-annotations.version>20.1.0</jetbrains-annotations.version>
     </properties>
 
     <dependencies>
@@ -69,6 +70,11 @@
             <groupId>redis.clients</groupId>
             <artifactId>jedis</artifactId>
             <version>${jedis.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jetbrains</groupId>
+            <artifactId>annotations</artifactId>
+            <version>${jetbrains-annotations.version}</version>
         </dependency>
     </dependencies>
 
