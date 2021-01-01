@@ -11,6 +11,10 @@ import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
+/**
+ * the reason why not use {@link java.util.concurrent.DelayQueue} is just because performance
+ * DelayQueue needs to grow up and extend, it's waste too much time
+ */
 public class FakeDelayQueue {
     public static PriorityBlockingQueue<DelayTask> delayTasks =
             new PriorityBlockingQueue<>(1000 * 1000 * 100, Comparator.comparingLong(DelayTask::getFuture));
