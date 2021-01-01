@@ -81,8 +81,10 @@ public class TimeWheel {
                     // 3, run the lowest level task
                     List<Task> taskList = this.tasks[this.p[0]];
                     for (Task task : taskList) {
-                        ThreadUtil.getThreadPool().execute(task.runnable);
-                        ThreadUtil.getThreadPool().submit(() -> this.scheduleAtFixedRateInner(task));
+                        ThreadUtil.getThreadPool().submit(() -> {
+                            this.scheduleAtFixedRateInner(task);
+                            task.runnable.run();
+                        });
                     }
                     taskList.clear();
                 };
@@ -137,7 +139,7 @@ public class TimeWheel {
     public static void main(String[] args) throws InterruptedException {
         AtomicLong ad = new AtomicLong(0);
         int i = 200 * 10000;
-        int j = 1000 * 1000;
+        int j = 1000 * 1000 * 5;
         AtomicLong start = new AtomicLong(System.nanoTime());
         Runnable r = () -> {
             long l = ad.incrementAndGet();
