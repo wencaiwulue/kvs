@@ -39,7 +39,7 @@ public class TimeWheel {
                 () -> {
                     this.p[0] += 1;
                     // get effect level
-                    //1, just image the progress of clock: 23:59:59 --> 00:00:00
+                    //1, just imagine the progress of clock: 23:59:59 --> 00:00:00
                     int e = 0;
                     for (int i = 0; i < this.level; i++) {
                         long quotient = this.p[i] / this.dial;
