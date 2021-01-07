@@ -9,6 +9,7 @@ import util.ThreadUtil;
 import java.util.Comparator;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
 
 /**
@@ -17,7 +18,7 @@ import java.util.function.Consumer;
  */
 public class FakeDelayQueue {
     public static PriorityBlockingQueue<DelayTask> delayTasks =
-            new PriorityBlockingQueue<>(1000 * 1000 * 100, Comparator.comparingLong(DelayTask::getFuture));
+            new PriorityBlockingQueue<>(1000 * 1000 * 100, Comparator.comparingLong(DelayTask::getFutureInNanos));
 
     static {
         Runnable r =
@@ -26,15 +27,18 @@ public class FakeDelayQueue {
                     while (true) {
                         if (!delayTasks.isEmpty()) {
                             DelayTask peek = delayTasks.peek();
-                            if (peek != null && peek.future <= System.nanoTime()) {
+                            if (peek != null && peek.futureInNanos <= System.nanoTime()) {
                                 delayTasks.poll();
                                 peek.c.accept(peek);
                             }
                         } else {
                             try {
                                 DelayTask take = delayTasks.take();
-                                if (take.future <= System.nanoTime()) {
+                                if (take.futureInNanos <= System.nanoTime()) {
                                     take.c.accept(take);
+                                } else if (TimeUnit.NANOSECONDS.toSeconds(take.futureInNanos - System.nanoTime()) > 1) {
+                                    LockSupport.parkNanos(TimeUnit.NANOSECONDS.toSeconds(take.futureInNanos - System.nanoTime()) - 1);
+                                    delayTasks.offer(take);
                                 } else {
                                     delayTasks.offer(take);
                                 }
@@ -58,13 +62,12 @@ public class FakeDelayQueue {
     @Setter
     public static class DelayTask {
         public TimeWheel.Task task;
-        public long future;
+        public long futureInNanos;
         // how to consume this delayTask if future is expired
         public Consumer<DelayTask> c;
 
-        public static DelayTask of(Runnable runnable, long initialDelay, long period, TimeUnit unit, Consumer<DelayTask> c) {
-            TimeWheel.Task task = TimeWheel.Task.of(runnable, initialDelay, period, unit);
-            long future = System.nanoTime() + unit.toNanos(initialDelay);
+        public static DelayTask of(TimeWheel.Task task, Consumer<DelayTask> c) {
+            long future = System.nanoTime() + task.unit.toNanos(task.initialDelay);
             return new DelayTask(task, future, c);
         }
     }

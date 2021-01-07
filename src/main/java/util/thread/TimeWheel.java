@@ -37,7 +37,7 @@ public class TimeWheel {
     private void init() {
         Runnable r =
                 () -> {
-                    this.p[0] += 1;
+                    this.p[0] += this.step;
                     // get effect level
                     //1, just imagine the progress of clock: 23:59:59 --> 00:00:00
                     int e = 0;
@@ -89,24 +89,30 @@ public class TimeWheel {
                     taskList.clear();
                 };
         ThreadUtil.getThreadPool().submit(() -> {
+            long sleep = TimeUnit.MILLISECONDS.toNanos(this.step);
             //noinspection InfiniteLoopStatement
             while (true) {
                 // maybe using parkUntil ?? a abstract time
-                LockSupport.parkNanos(1000 * 1000 * this.step);
+                LockSupport.parkNanos(sleep);
                 ThreadUtil.getThreadPool().submit(r);
             }
         });
     }
 
-    public FakeDelayQueue.DelayTask scheduleAtFixedRate(Runnable command, long initialDelay, long period, TimeUnit unit) {
-        Consumer<FakeDelayQueue.DelayTask> c = delayTask -> {
+    public Task scheduleAtFixedRate(Runnable command, long initialDelay, long period, TimeUnit unit) {
+        Consumer<FakeDelayQueue.DelayTask> consumeThisTask = delayTask -> {
             this.scheduleAtFixedRateInner(delayTask.task);
             delayTask.task.runnable.run();
         };
+        Task task = Task.of(command, initialDelay, period, unit);
         FakeDelayQueue.DelayTask delayTask = FakeDelayQueue.DelayTask
-                .of(command, initialDelay, period, unit, t -> ThreadUtil.getThreadPool().submit(() -> c.accept(t)));
-        FakeDelayQueue.delay(delayTask);
-        return delayTask;
+                .of(task, t -> ThreadUtil.getThreadPool().submit(() -> consumeThisTask.accept(t)));
+        if (initialDelay <= 0) {
+            consumeThisTask.accept(delayTask);
+        } else {
+            FakeDelayQueue.delay(delayTask);
+        }
+        return task;
     }
 
     private Task scheduleAtFixedRateInner(Task task) {
@@ -116,8 +122,8 @@ public class TimeWheel {
         int bucket = (int) (l / Math.pow(this.dial, level));
 
         // insert into relative bucket, not abstract bucket
-        long l1 = level * this.dial + (bucket + this.p[level]) % this.dial;
-        this.tasks[(int) l1].add(task);
+        long rl = level * this.dial + (bucket + this.p[level]) % this.dial;
+        this.tasks[(int) rl].add(task);
         return task;
     }
 
