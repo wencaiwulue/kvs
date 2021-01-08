@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import util.ThreadUtil;
 
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -17,17 +18,17 @@ import java.util.stream.IntStream;
 public class TimeWheel {
     public int level;
     public int[] p;
-    public long dial;
+    public long[] dial;
     public long step;
     public List<Task>[] tasks;
 
     @SuppressWarnings("unchecked")
-    public TimeWheel(int level, long dial, long step) {
+    public TimeWheel(int level, long[] dial, long step) {
         this.level = level;
         this.p = new int[level];
         this.dial = dial;
         this.step = step;
-        this.tasks = new LinkedList[(int) (this.dial * this.level)];
+        this.tasks = new LinkedList[(int) Arrays.stream(this.dial).asDoubleStream().reduce(1, Double::sum)];
         for (int i = 0; i < this.tasks.length; i++) {
             this.tasks[i] = new LinkedList<>();
         }
@@ -42,15 +43,15 @@ public class TimeWheel {
                     //1, just imagine the progress of clock: 23:59:59 --> 00:00:00
                     int e = 0;
                     for (int i = 0; i < this.level; i++) {
-                        long quotient = this.p[i] / this.dial;
-                        long remainder = this.p[i] % this.dial;
+                        long quotient = this.p[i] / this.dial[i];
+                        long remainder = this.p[i] % this.dial[i];
                         this.p[i] = (int) remainder;
                         if (quotient == 0) {
                             break;
                         } else {
                             this.p[i + 1] += quotient;
                             e = i + 1;
-                            if (this.p[this.level - 1] == this.dial) {
+                            if (this.p[this.level - 1] == this.dial[this.level - 1]) {
                                 e = this.level - 1;
                                 // 23:59:59 --> 00:00:00
                                 for (int j = 0; j < this.level; j++) {
@@ -63,14 +64,14 @@ public class TimeWheel {
 
                     // 2, drop the task to the lower level
                     for (int i = e; i > 0; i--) {
-                        long l = this.p[i] + this.dial * i;
+                        long l = this.p[i] + this.dial[i] * i;
                         List<Task> taskList = this.tasks[(int) l];
                         for (Task task : taskList) {
                             int finalI = i;
                             Runnable runnable = () -> {
                                 int t = (int) task.unit.toMillis(task.period);
-                                double remind = t % (Math.pow(this.dial, finalI));
-                                long position = (long) ((remind + this.p[finalI - 1]) % this.dial);
+                                double remind = t % (Math.pow(this.dial[finalI], finalI));
+                                long position = (long) ((remind + this.p[finalI - 1]) % this.dial[finalI]);
                                 this.tasks[(int) position].add(task);
                             };
                             ThreadUtil.getThreadPool().submit(runnable);
@@ -117,12 +118,21 @@ public class TimeWheel {
 
     private Task scheduleAtFixedRateInner(Task task) {
         int l = (int) task.unit.toMillis(task.period);
+        int level = 0;
+        int s = 1;
+        for (int i = 0; i < this.level; i++) {
+            if (l <= this.dial[i] * s) {
+                level = i;
+                break;
+            } else {
+                s *= this.dial[i];
+            }
+        }
 
-        int level = (int) (Math.log(l) / Math.log(this.dial));
-        int bucket = (int) (l / Math.pow(this.dial, level));
+        int bucket = (int) (l / Math.pow(this.dial[level], level));
 
         // insert into relative bucket, not abstract bucket
-        long rl = level * this.dial + (bucket + this.p[level]) % this.dial;
+        long rl = level * this.dial[level] + (bucket + this.p[level]) % this.dial[level];
         this.tasks[(int) rl].add(task);
         return task;
     }
@@ -145,7 +155,7 @@ public class TimeWheel {
     public static void main(String[] args) throws InterruptedException {
         AtomicLong ad = new AtomicLong(0);
         int i = 200 * 10000;
-        int j = 1000 * 1000 * 5;
+        int j = 1000 * 10;
         AtomicLong start = new AtomicLong(System.nanoTime());
         Runnable r = () -> {
             long l = ad.incrementAndGet();
@@ -158,7 +168,7 @@ public class TimeWheel {
         };
         Runnable empty = () -> {
         };
-        TimeWheel timeWheel = new TimeWheel(4, 60, 1);
+        TimeWheel timeWheel = new TimeWheel(4, new long[]{1000, 60, 60, 24}, 1);
 //        IntStream.range(0, i)
 //                .forEach(e -> timeWheel.scheduleAtFixedRate(empty, 0, 123, TimeUnit.SECONDS));
 //        IntStream.range(0, i)
