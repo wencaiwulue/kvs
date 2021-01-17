@@ -10,10 +10,8 @@ import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
-import java.util.stream.IntStream;
 
 public class TimeWheel {
     public int level;
@@ -150,32 +148,5 @@ public class TimeWheel {
         public static Task of(Runnable runnable, long initialDelay, long period, TimeUnit unit) {
             return new Task(runnable, initialDelay, period, unit);
         }
-    }
-
-    public static void main(String[] args) throws InterruptedException {
-        AtomicLong ad = new AtomicLong(0);
-        int i = 200 * 10000;
-        int j = 1000 * 10;
-        AtomicLong start = new AtomicLong(System.nanoTime());
-        Runnable r = () -> {
-            long l = ad.incrementAndGet();
-            if (l % j == 0) {
-                long end = System.nanoTime();
-                System.out.println(TimeUnit.NANOSECONDS.toSeconds(end - start.get()));
-                start.set(end);
-                System.out.println(l);
-            }
-        };
-        Runnable empty = () -> {
-        };
-        TimeWheel timeWheel = new TimeWheel(4, new long[]{1000, 60, 60, 24}, 1);
-//        IntStream.range(0, i)
-//                .forEach(e -> timeWheel.scheduleAtFixedRate(empty, 0, 123, TimeUnit.SECONDS));
-//        IntStream.range(0, i)
-//                .forEach(e -> timeWheel.scheduleAtFixedRate(empty, 0, 39, TimeUnit.SECONDS));
-        IntStream.range(0, j)
-                .forEach(e -> timeWheel.scheduleAtFixedRate(r, 5, 3, TimeUnit.SECONDS));
-
-        Thread.sleep(Long.MAX_VALUE);
     }
 }
