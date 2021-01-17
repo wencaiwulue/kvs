@@ -11,14 +11,13 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
-import java.util.function.Consumer;
 
 public class TimeWheel {
-    public int level;
-    public int[] p;
-    public long[] dial;
-    public long step;
-    public List<Task>[] tasks;
+    private final int level;
+    private final int[] p;
+    private final long[] dial;
+    private final long step;
+    private final List<Task>[] tasks;
 
     @SuppressWarnings("unchecked")
     public TimeWheel(int level, long[] dial, long step) {
@@ -99,17 +98,15 @@ public class TimeWheel {
     }
 
     public Task scheduleAtFixedRate(Runnable command, long initialDelay, long period, TimeUnit unit) {
-        Consumer<FakeDelayQueue.DelayTask> consumeThisTask = delayTask -> {
-            this.scheduleAtFixedRateInner(delayTask.task);
-            delayTask.task.runnable.run();
-        };
         Task task = Task.of(command, initialDelay, period, unit);
-        FakeDelayQueue.DelayTask delayTask = FakeDelayQueue.DelayTask
-                .of(task, t -> ThreadUtil.getThreadPool().submit(() -> consumeThisTask.accept(t)));
+        Runnable runnable = () -> {
+            this.scheduleAtFixedRateInner(task);
+            task.runnable.run();
+        };
         if (initialDelay <= 0) {
-            consumeThisTask.accept(delayTask);
+            ThreadUtil.getThreadPool().submit(runnable);
         } else {
-            FakeDelayQueue.delay(delayTask);
+            FakeDelayQueue.delay(FakeDelayQueue.DelayTask.of(task.getFutureInMills(), runnable));
         }
         return task;
     }
@@ -140,10 +137,14 @@ public class TimeWheel {
     @Getter
     @Setter
     public static class Task {
-        public Runnable runnable;
-        public long initialDelay;
-        public long period;
-        public TimeUnit unit;
+        private Runnable runnable;
+        private long initialDelay;
+        private long period;
+        private TimeUnit unit;
+
+        public long getFutureInMills() {
+            return System.currentTimeMillis() + this.unit.toMillis(this.initialDelay);
+        }
 
         public static Task of(Runnable runnable, long initialDelay, long period, TimeUnit unit) {
             return new Task(runnable, initialDelay, period, unit);

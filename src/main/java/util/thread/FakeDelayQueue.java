@@ -10,7 +10,6 @@ import java.util.Comparator;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
-import java.util.function.Consumer;
 
 /**
  * the reason why not use {@link java.util.concurrent.DelayQueue} is just because performance
@@ -18,7 +17,7 @@ import java.util.function.Consumer;
  */
 public class FakeDelayQueue {
     public static PriorityBlockingQueue<DelayTask> delayTasks =
-            new PriorityBlockingQueue<>(1000 * 1000 * 100, Comparator.comparingLong(DelayTask::getFutureInNanos));
+            new PriorityBlockingQueue<>(1000 * 1000 * 100, Comparator.comparingLong(DelayTask::getFutureInMillis));
 
     static {
         Runnable r =
@@ -26,24 +25,22 @@ public class FakeDelayQueue {
                     //noinspection InfiniteLoopStatement
                     while (true) {
                         if (!delayTasks.isEmpty()) {
-                            DelayTask peek = delayTasks.peek();
-                            if (peek != null && peek.futureInNanos <= System.nanoTime()) {
+                            DelayTask task = delayTasks.peek();
+                            if (task != null && task.futureInMillis <= System.currentTimeMillis()) {
                                 delayTasks.poll();
-                                peek.c.accept(peek);
+                                task.consume();
                             }
                         } else {
                             try {
-                                DelayTask take = delayTasks.take();
-                                if (take.futureInNanos <= System.nanoTime()) {
-                                    take.c.accept(take);
-                                } else if (TimeUnit.NANOSECONDS.toSeconds(take.futureInNanos - System.nanoTime()) > 1) {
-                                    LockSupport.parkNanos(TimeUnit.NANOSECONDS.toSeconds(take.futureInNanos - System.nanoTime()) - 1);
-                                    delayTasks.offer(take);
-                                } else {
-                                    delayTasks.offer(take);
+                                // if this queue is empty, call take function will stock here, optimize performance
+                                DelayTask task = delayTasks.take();
+                                long i = task.futureInMillis - System.currentTimeMillis();
+                                if (i > 0) {
+                                    LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(i));
                                 }
-                            } catch (InterruptedException exception) {
-                                exception.printStackTrace();
+                                task.consume();
+                            } catch (InterruptedException ex) {
+                                ex.printStackTrace();
                             }
                         }
                     }
@@ -51,9 +48,9 @@ public class FakeDelayQueue {
         ThreadUtil.getThreadPool().submit(r);
     }
 
-    public static DelayTask delay(DelayTask task) {
-        delayTasks.offer(task);
-        return task;
+    public static DelayTask delay(DelayTask delayTask) {
+        delayTasks.offer(delayTask);
+        return delayTask;
     }
 
     @AllArgsConstructor
@@ -61,14 +58,15 @@ public class FakeDelayQueue {
     @Getter
     @Setter
     public static class DelayTask {
-        public TimeWheel.Task task;
-        public long futureInNanos;
-        // how to consume this delayTask if future is expired
-        public Consumer<DelayTask> c;
+        private Runnable runnable;
+        private long futureInMillis;
 
-        public static DelayTask of(TimeWheel.Task task, Consumer<DelayTask> c) {
-            long future = System.nanoTime() + task.unit.toNanos(task.initialDelay);
-            return new DelayTask(task, future, c);
+        public static DelayTask of(long futureInMillis, Runnable c) {
+            return new DelayTask(c, futureInMillis);
+        }
+
+        private void consume() {
+            ThreadUtil.getThreadPool().execute(this.runnable);
         }
     }
 }

@@ -13,11 +13,13 @@ public class TimeWheelTest {
         Runnable runnable = () -> {
         };
 
-        int i = 1000 * 1000 * 1;
+        int i = 1000 * 1000 * 2;
         long l = System.currentTimeMillis();
         IntStream.range(0, i)
-                .forEach(e -> FakeDelayQueue.delay(FakeDelayQueue.DelayTask.of(TimeWheel.Task.of(runnable, e % 2, 2, TimeUnit.SECONDS), (Void) -> {
-                })));
+                .forEach(e -> {
+                    TimeWheel.Task task = TimeWheel.Task.of(runnable, e % 2, 2, TimeUnit.SECONDS);
+                    FakeDelayQueue.delay(FakeDelayQueue.DelayTask.of(task.getFutureInMills(), () -> task.getRunnable().run()));
+                });
         for (int i1 = 0; i1 < i; i1++) {
             if (!FakeDelayQueue.delayTasks.isEmpty()) {
                 FakeDelayQueue.DelayTask poll = FakeDelayQueue.delayTasks.take();
