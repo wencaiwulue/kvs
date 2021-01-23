@@ -67,7 +67,7 @@ public class InstallSnapshotRequestProcessor implements Processor {
                     fileChannel.write(ByteBuffer.wrap(response.bytes));// 写入磁盘
                     fileChannel.force(true);
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    LOGGER.error(e.getMessage());
                 }
                 offset += Math.min(response.bytes.length, length);
             } else {

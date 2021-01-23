@@ -6,6 +6,8 @@ import io.netty.channel.*;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.websocketx.*;
 import io.netty.util.CharsetUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import rpc.model.requestresponse.Request;
 import rpc.model.requestresponse.Response;
 import rpc.netty.pub.RpcClient;
@@ -15,6 +17,7 @@ import util.FSTUtil;
 import java.net.InetSocketAddress;
 
 public class WebSocketClientHandler extends SimpleChannelInboundHandler<Object> {
+    private static final Logger LOGGER = LoggerFactory.getLogger(WebSocketClientHandler.class);
 
     private final WebSocketClientHandshaker handShaker;
     private ChannelPromise handshakeFuture;
@@ -41,13 +44,13 @@ public class WebSocketClientHandler extends SimpleChannelInboundHandler<Object> 
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
-        System.out.println("WebSocket Client disconnected!");
+        LOGGER.info("WebSocket Client disconnected!");
         RpcClient.getConnection()
                 .entrySet()
                 .stream()
                 .filter(e -> e.getValue() == ctx.channel())
                 .findFirst()
-                .ifPresent(entry -> System.out.println("with server: " + entry.getKey().toString()));
+                .ifPresent(entry -> LOGGER.info("with server: " + entry.getKey().toString()));
     }
 
     @Override
@@ -56,10 +59,10 @@ public class WebSocketClientHandler extends SimpleChannelInboundHandler<Object> 
         if (!handShaker.isHandshakeComplete()) {
             try {
                 handShaker.finishHandshake(ch, (FullHttpResponse) msg);
-                System.out.println("WebSocket Client connected!");
+                LOGGER.info("WebSocket Client connected!");
                 handshakeFuture.setSuccess();
             } catch (WebSocketHandshakeException e) {
-                System.out.println("WebSocket Client failed to connect");
+                LOGGER.error("WebSocket Client failed to connect");
                 handshakeFuture.setFailure(e);
             }
             return;
@@ -91,7 +94,7 @@ public class WebSocketClientHandler extends SimpleChannelInboundHandler<Object> 
             byte[] bytes = new byte[buffer.capacity()];
             buffer.readBytes(bytes);
             Object object = FSTUtil.getBinaryConf().asObject(bytes);
-            System.out.printf("%s --> %s message: %s\n", remote.getPort(), WebSocketServer.SELF.getPort(), object.toString());
+            LOGGER.info("{} --> {} message: {}", remote.getPort(), WebSocketServer.SELF.getPort(), object.toString());
             if (object instanceof Response) {
                 RpcClient.addResponse(((Response) object).requestId, (Response) object);
             } else if (object instanceof Request) {
@@ -101,7 +104,7 @@ public class WebSocketClientHandler extends SimpleChannelInboundHandler<Object> 
                     ctx.writeAndFlush(new BinaryWebSocketFrame(Unpooled.wrappedBuffer(byteArray)))
                             .addListeners(ChannelFutureListener.CLOSE_ON_FAILURE);
                 } else {
-                    System.out.println("client handler, response is empty ??");
+                    LOGGER.warn("client handler, response is empty ?");
                 }
             }
         }
@@ -109,7 +112,7 @@ public class WebSocketClientHandler extends SimpleChannelInboundHandler<Object> 
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        cause.printStackTrace();
+        LOGGER.error(cause.getMessage());
         if (!handshakeFuture.isDone()) {
             handshakeFuture.setFailure(cause);
         }

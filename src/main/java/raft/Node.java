@@ -231,7 +231,7 @@ public class Node implements Runnable {
             }
             this.nextElectTime = this.nextElectTime();
         } finally {
-            System.out.println("Elect spent time: " + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
+            LOGGER.info("Elect spent time: {}ms", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
             this.writeLock.unlock();
         }
 

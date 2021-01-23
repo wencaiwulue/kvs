@@ -5,6 +5,8 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.handler.codec.http.websocketx.BinaryWebSocketFrame;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import raft.NodeAddress;
 import rpc.model.requestresponse.Request;
 import rpc.model.requestresponse.Response;
@@ -22,7 +24,9 @@ import java.util.function.Supplier;
  * @since 3/14/2020 15:46
  */
 public class RpcClient {
-    private static final Map<InetSocketAddress, Channel> CONNECTIONS = new ConcurrentHashMap<>(); // 主节点于各个简单的链接
+    private static final Logger LOGGER = LoggerFactory.getLogger(RpcClient.class);
+
+    private static final Map<InetSocketAddress, Channel> CONNECTIONS = new ConcurrentHashMap<>();
     private static final Map<Integer, Response> RESPONSE_MAP = new ConcurrentHashMap<>();
     private static final Map<Integer, CountDownLatch> RESPONSE_MAP_LOCK = new ConcurrentHashMap<>();
     private static final ArrayBlockingQueue<SocketRequest> REQUEST_TASK = new ArrayBlockingQueue<>(10 * 1000 * 1000);
@@ -31,53 +35,57 @@ public class RpcClient {
         ThreadUtil.getThreadPool().execute(RpcClient::writeRequest);
     }
 
-    public static void addConnection(InetSocketAddress k, Channel v) {
-        CONNECTIONS.put(k, v);
+    public static void addConnection(InetSocketAddress remoteAddress, Channel channel) {
+        CONNECTIONS.put(remoteAddress, channel);
     }
 
     public static Map<InetSocketAddress, Channel> getConnection() {
         return ImmutableMap.copyOf(CONNECTIONS);
     }
 
-    public static void addResponse(int k, Response v) {
-        RESPONSE_MAP.put(k, v);
-        CountDownLatch latch = RESPONSE_MAP_LOCK.get(k);
+    public static void addResponse(int requestId, Response response) {
+        RESPONSE_MAP.put(requestId, response);
+        CountDownLatch latch = RESPONSE_MAP_LOCK.remove(requestId);
         if (latch != null) {
             latch.countDown();
         }
     }
 
-    private static Channel getConnection(InetSocketAddress remote) {
-        if (remote == null) return null;
-        Supplier<Boolean> supplier = () -> !CONNECTIONS.containsKey(remote)
-                || !CONNECTIONS.get(remote).isOpen()
-                || !CONNECTIONS.get(remote).isActive()
-                || !CONNECTIONS.get(remote).isRegistered();
+    private static Channel getConnection(InetSocketAddress remoteAddress) {
+        if (remoteAddress == null) {
+            return null;
+        }
+        Supplier<Boolean> supplier = () -> !CONNECTIONS.containsKey(remoteAddress)
+                || !CONNECTIONS.get(remoteAddress).isOpen()
+                || !CONNECTIONS.get(remoteAddress).isActive()
+                || !CONNECTIONS.get(remoteAddress).isRegistered();
 
         if (supplier.get()) {
-            synchronized (remote.toString().intern()) {
+            synchronized (remoteAddress.toString().intern()) {
                 if (supplier.get()) {
-                    WebSocketClient.doConnection(remote);
+                    WebSocketClient.doConnection(remoteAddress);
                 }
             }
         }
-        return CONNECTIONS.get(remote);
+        return CONNECTIONS.get(remoteAddress);
     }
 
-    public static Response doRequest(NodeAddress remote, final Request request) {
-        return doRequest(remote.getSocketAddress(), request);
+    public static Response doRequest(NodeAddress remoteAddress, final Request request) {
+        return doRequest(remoteAddress.getSocketAddress(), request);
     }
 
-    public static Response doRequest(InetSocketAddress remote, final Request request) {
-        if (remote == null) return null;
+    public static Response doRequest(InetSocketAddress remoteAddress, final Request request) {
+        if (remoteAddress == null) {
+            return null;
+        }
 
         CountDownLatch latch = new CountDownLatch(1);
-        SocketRequest socketRequest = new SocketRequest(remote, request);
+        SocketRequest socketRequest = new SocketRequest(remoteAddress, request);
         try {
             REQUEST_TASK.put(socketRequest);
             RESPONSE_MAP_LOCK.put(request.requestId, latch);
         } catch (InterruptedException e) {
-            e.printStackTrace();
+            LOGGER.error(e.getMessage());
         }
 
         try {
@@ -90,9 +98,7 @@ public class RpcClient {
             socketRequest.cancelled = true;
             return null;
         }
-        Response response = RESPONSE_MAP.remove(request.requestId);
-        System.out.printf("response info: %s\n", FSTUtil.getJsonConf().asJsonString(response));
-        return response;
+        return RESPONSE_MAP.remove(request.requestId);
     }
 
     private static void writeRequest() {
@@ -102,7 +108,7 @@ public class RpcClient {
             try {
                 socketRequest = REQUEST_TASK.take();
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                LOGGER.error(e.getMessage());
             }
             if (socketRequest != null && !socketRequest.cancelled) {
                 boolean success = false;

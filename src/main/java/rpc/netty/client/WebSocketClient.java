@@ -17,6 +17,8 @@ import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.handler.timeout.IdleStateHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import rpc.netty.server.HeartBeatHandler;
 import rpc.netty.server.WebSocketServer;
 import rpc.netty.config.Constant;
@@ -28,6 +30,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class WebSocketClient {
+    private static final Logger LOGGER = LoggerFactory.getLogger(WebSocketClient.class);
     static final EventLoopGroup EVENT_LOOP = new NioEventLoopGroup(1);
 
     public static void doConnection(InetSocketAddress address) {
@@ -66,7 +69,7 @@ public final class WebSocketClient {
             ref.get().getHandshakeFuture().sync();
             RpcClient.addConnection(address, channel);
         } catch (Exception e) {
-            e.printStackTrace();
+            LOGGER.error("Server {} is unhealthily, please check the machine status", address.getPort());
         }
     }
 }
