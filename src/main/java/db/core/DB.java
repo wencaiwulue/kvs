@@ -106,7 +106,7 @@ public class DB {
                     } finally {
                         this.writeLock.unlock();
                     }
-                    this.lastAppendTime = System.nanoTime();
+                    this.lastAppendTime = System.currentTimeMillis();
                 }
             }
 
@@ -118,7 +118,7 @@ public class DB {
                     } finally {
                         this.lock.writeLock().unlock();
                     }
-                    this.lastSnapshotTime = System.nanoTime();
+                    this.lastSnapshotTime = System.currentTimeMillis();
                 }
             }
         };
@@ -148,11 +148,11 @@ public class DB {
     }
 
     public boolean shouldToSnapshot() {
-        return this.lastSnapshotTime + Config.SNAPSHOT_RATE.toNanos() < System.nanoTime();
+        return this.lastSnapshotTime + Config.SNAPSHOT_RATE.toMillis() < System.currentTimeMillis();
     }
 
     public boolean shouldToAppend() {
-        return this.lastAppendTime + Config.APPEND_RATE.toNanos() < System.nanoTime();
+        return this.lastAppendTime + Config.APPEND_RATE.toMillis() < System.currentTimeMillis();
     }
 
 

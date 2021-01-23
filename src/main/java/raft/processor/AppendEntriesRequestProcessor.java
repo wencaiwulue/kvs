@@ -7,6 +7,8 @@ import raft.LogEntry;
 import raft.Node;
 import raft.enums.Role;
 import rpc.model.requestresponse.*;
+import rpc.netty.server.WebSocketServer;
+import util.ThreadUtil;
 
 /**
  * @author naison
@@ -24,10 +26,14 @@ public class AppendEntriesRequestProcessor implements Processor {
     public Response process(Request req, Node node) {
         node.writeLock.lock();
         try {
-            node.nextElectTime = node.nextElectTime();// push off elect
+            // push off elect
+            node.nextElectTime = node.nextElectTime();
             AppendEntriesRequest request = (AppendEntriesRequest) req;
-            LOGGER.error("收到来自leader:{}的心跳, term:{}", request.getLeaderId().getSocketAddress().getPort(), request.getTerm());
+            LOGGER.error("{} --> {}, receive heartbeat, term: {}", request.getLeaderId().getSocketAddress().getPort(), WebSocketServer.PORT, request.getTerm());
             if (request.getTerm() < node.currentTerm) {
+                // start elect, because leader term is less than current nodes term
+                node.nextElectTime = -1;
+                node.role = Role.CANDIDATE;
                 return new AppendEntriesResponse(node.currentTerm, false, node.logdb.lastLogIndex);
             } else if (request.getTerm() > node.currentTerm) {
                 node.currentTerm = request.getTerm();
@@ -43,7 +49,7 @@ public class AppendEntriesRequestProcessor implements Processor {
                     node.lastVoteFor = null;
                     node.role = Role.FOLLOWER;
                     node.nextElectTime = -1;// 立即重新选举
-//                    ThreadUtil.getThreadPool().execute(node.elect);
+                    ThreadUtil.getThreadPool().execute(node.electTask);
                 }
                 return new AppendEntriesResponse(request.getTerm() + 1, false, node.logdb.lastLogIndex);
             }

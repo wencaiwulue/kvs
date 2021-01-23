@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class ExpireKey implements Comparable<ExpireKey> {
     private String key;
-    private long expire;// System.nanoTime();
+    private long expire;// System.currentTimeMillis();
 
     public ExpireKey() {
     }
@@ -17,7 +17,7 @@ public class ExpireKey implements Comparable<ExpireKey> {
     public ExpireKey(String key, int expire, TimeUnit unit) {
         this.key = key;
         if (expire > 0 && unit != null) {
-            this.expire = unit.toNanos(expire) + System.nanoTime();
+            this.expire = unit.toMillis(expire) + System.currentTimeMillis();
         } else {
             this.expire = -1;
         }
@@ -32,7 +32,7 @@ public class ExpireKey implements Comparable<ExpireKey> {
     }
 
     public boolean isExpired() {
-        return this.expire < System.nanoTime();
+        return this.expire < System.currentTimeMillis();
     }
 
     @Override

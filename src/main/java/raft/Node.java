@@ -56,8 +56,8 @@ public class Node implements Runnable {
     private volatile int lastAppliedTerm = 0;
     public volatile long nextIndex;
 
-    public volatile long nextElectTime = this.nextElectTime();// 下次选举时间，总是会因为心跳而推迟，会在因为主leader down后开始选举
-    public volatile long nextHeartbeatTime /*= System.nanoTime() + this.heartBeatRate*/;// 下次心跳时间。对leader有用
+    public volatile long nextElectTime = this.nextElectTime() + TimeUnit.SECONDS.toMillis(5);// 下次选举时间，总是会因为心跳而推迟，会在因为主leader down后开始选举
+    public volatile long nextHeartbeatTime /*= System.currentTimeMillis() + this.heartBeatRate*/;// 下次心跳时间。对leader有用
     //150ms -- 300ms randomized  超时时间,选举的时候，如果主节点挂了，则所有的节点开始timeout，然后最先timeout结束的节点变为candidate，
     // 参见竞选，然后发送竞选类型的请求，如果半数以上统一，则广播给所有人，
     // leader回一直发送心跳包，如果timeout后还没有发现心跳包来，就说明leader挂了，需要开始选举
@@ -106,12 +106,13 @@ public class Node implements Runnable {
                 return;
             }
 
-            if (this.nextElectTime > System.nanoTime()) {
+            if (this.nextElectTime > System.currentTimeMillis()) {
                 return;
             }
 
-            // electing start
-            elect();
+            this.role = Role.CANDIDATE;
+
+            this.elect();
         };
         ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(this.electTask, 0, 400, TimeUnit.MILLISECONDS);
 
@@ -120,7 +121,7 @@ public class Node implements Runnable {
                 return;
             }
 
-            if (this.nextHeartbeatTime > System.nanoTime()) {
+            if (this.nextHeartbeatTime > System.currentTimeMillis()) {
                 return;
             }
 
@@ -152,7 +153,7 @@ public class Node implements Runnable {
                     LOGGER.error("{} --> {}, receive heartbeat response", remote.getSocketAddress().getPort(), WebSocketServer.PORT);
                 }
                 this.nextElectTime = this.nextElectTime();
-                this.nextHeartbeatTime = System.nanoTime() + Config.HEARTBEAT_RATE.toNanos();
+                this.nextHeartbeatTime = System.currentTimeMillis() + Config.HEARTBEAT_RATE.toMillis();
                 LOGGER.info("delay elect successfully");
             }
         };
@@ -163,30 +164,30 @@ public class Node implements Runnable {
     @SuppressWarnings("NonAtomicOperationOnVolatileField")
     private void elect() {
         if (this.allNodeAddressExcludeMe().isEmpty()) { // only one node
-            LOGGER.error("singleton cluster");
+            LOGGER.info("Singleton cluster");
             return;
         }
 
-        LOGGER.error("start elect...");
+        LOGGER.info("start elect...");
         long start = System.nanoTime();
         this.writeLock.lock();
         try {
+            this.currentTerm++;
             AtomicInteger ticket = new AtomicInteger(1);//先给自己投一票
             AtomicBoolean fail = new AtomicBoolean(false);
-            this.role = Role.CANDIDATE;// 改变状态为candidate
             CountDownLatch latch = new CountDownLatch(this.allNodeAddressExcludeMe().size());
             Future<?>[] futures = new Future[this.allNodeAddressExcludeMe().size()];
-            int p = 0;
+            int index = 0;
             for (NodeAddress addr : this.allNodeAddressExcludeMe()) {
                 Runnable r = () -> {
                     try {
-                        VoteResponse response = (VoteResponse) RpcClient.doRequest(addr, new VoteRequest(this.address, this.currentTerm + 1, this.logdb.lastLogIndex, this.logdb.lastLogTerm));
+                        VoteResponse response = (VoteResponse) RpcClient.doRequest(addr, new VoteRequest(this.address, this.currentTerm, this.logdb.lastLogIndex, this.logdb.lastLogTerm));
                         if (response != null) {
                             LOGGER.error("{} --> {}, vote response: {}", addr.getSocketAddress().getPort(), WebSocketServer.PORT, response.toString());
                             if (response.isGrant()) {
                                 ticket.addAndGet(1);
                             } else if (response.getTerm() > this.currentTerm) {
-                                this.role = Role.FOLLOWER;
+//                                this.role = Role.FOLLOWER;
                                 this.currentTerm = response.getTerm();
                                 fail.set(true);
                             } else {
@@ -199,14 +200,13 @@ public class Node implements Runnable {
                         latch.countDown();
                     }
                 };
-                futures[p++] = ThreadUtil.getThreadPool().submit(r);
+                futures[index++] = ThreadUtil.getThreadPool().submit(r);
             }
             try {
-                boolean a = latch.await(Config.ELECT_RATE.toMillis(), TimeUnit.MILLISECONDS);
-                if (!a) {
+                boolean success = latch.await(Config.ELECT_RATE.toMillis(), TimeUnit.MILLISECONDS);
+                if (!success) {
                     Arrays.stream(futures).forEach(e -> e.cancel(true));
                     LOGGER.error("elect timeout, cancel all task");
-                    return;
                 }
             } catch (InterruptedException exception) {
                 Arrays.stream(futures).forEach(e -> e.cancel(true));
@@ -217,22 +217,23 @@ public class Node implements Runnable {
                 LOGGER.error("elect failed, cancel all task");
             }
             // 0-150ms, 随机一段时间，避免同时选举
-            int mostTicketNum = BigDecimal.valueOf(this.allNodeAddresses.size() / 2D).setScale(0, RoundingMode.UP).intValue() + 1;
-            if (ticket.get() >= mostTicketNum) {// 超过半数了，成功了
+            int mostTicketNum = BigDecimal.valueOf(this.allNodeAddresses.size() / 2D).setScale(0, RoundingMode.UP).intValue();
+            if (ticket.get() >= mostTicketNum) {
                 LOGGER.info("elect successfully，leader info: {}", this.address);
                 this.currentTerm = this.currentTerm + 1;
                 this.leaderAddress = this.address;
                 this.role = Role.LEADER;
-                this.nextHeartbeatTime = -1;// 立即心跳
+                this.nextHeartbeatTime = -1;
                 ThreadUtil.getThreadPool().submit(this.heartbeatTask);
             } else {
-                LOGGER.info("elect failed, expect ticket is {}, not received {}", mostTicketNum, ticket.get());
+                LOGGER.info("elect failed, expect ticket is {}, but received {}", mostTicketNum, ticket.get());
             }
             this.nextElectTime = this.nextElectTime();// 0-150ms, 随机一段时间，避免同时选举
         } finally {
             System.out.println("elect spent time: " + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
             this.writeLock.unlock();
         }
+
     }
 
 
@@ -270,7 +271,7 @@ public class Node implements Runnable {
     }
 
     public long nextElectTime() {
-        return System.nanoTime() + Config.ELECT_RATE.toNanos() + TimeUnit.MILLISECONDS.toNanos(ThreadLocalRandom.current().nextInt(100));// randomize 0--100 ms
+        return System.currentTimeMillis() + Config.ELECT_RATE.toMillis() + ThreadLocalRandom.current().nextInt(100);// randomize 0--100 ms
     }
 
     /*
