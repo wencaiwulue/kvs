@@ -204,6 +204,9 @@ public class Node implements Runnable {
             try {
                 boolean success = latch.await(Config.ELECT_RATE.toMillis(), TimeUnit.MILLISECONDS);
                 if (!success) {
+                    // should i to waiting for other node's response or not ?
+                    if (ticket.getAcquire() > 1) {
+                    }
                     Arrays.stream(futures).forEach(e -> e.cancel(true));
                     LOGGER.error("elect timeout, cancel all task");
                 }
@@ -234,20 +237,12 @@ public class Node implements Runnable {
 
     }
 
-
-    public static boolean isDead(SocketChannel channel) {
-        return channel == null || !channel.isOpen() || !channel.isConnected();
-    }
-
     public boolean isLeader() {
-        return leaderAddress != null && leaderAddress.equals(this.address) && role == Role.LEADER;
+        return this.address.equals(this.leaderAddress) && this.role == Role.LEADER;
     }
 
     public Response handle(Request request) {
-        if (request == null) {
-            return null;
-        }
-        if (!this.start) {
+        if (!this.start || request == null) {
             return null;
         }
 
@@ -271,9 +266,9 @@ public class Node implements Runnable {
         return nodeAddresses;
     }
 
-    // randomize 0-150ms, avoid two nodes elect at the same
+    // randomize 0-100ms, avoid two nodes elect at the same
     public long nextElectTime() {
-        return System.currentTimeMillis() + Config.ELECT_RATE.toMillis() + ThreadLocalRandom.current().nextInt(100);// randomize 0--100 ms
+        return System.currentTimeMillis() + Config.ELECT_RATE.toMillis() + ThreadLocalRandom.current().nextInt(100);
     }
 
 }
