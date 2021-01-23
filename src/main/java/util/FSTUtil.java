@@ -2,26 +2,22 @@ package util;
 
 import org.nustaq.serialization.FSTConfiguration;
 
-import java.nio.ByteBuffer;
-
 /**
  * @author naison
  * @since 3/25/2020 17:25
  */
 public class FSTUtil { // use for communication serialization
 
-    private static final FSTConfiguration CONF = FSTConfiguration.createDefaultConfiguration();
+    private static final FSTConfiguration BINARY_CONF = FSTConfiguration.createUnsafeBinaryConfiguration();
+    private static final FSTConfiguration JSON_CONF = FSTConfiguration.createJsonNoRefConfiguration();
 
-    public static FSTConfiguration getConf() {
-        return CONF;
+    public static FSTConfiguration getBinaryConf() {
+        return BINARY_CONF;
     }
 
-    public static ByteBuffer asArrayWithLength(Object object) {
-        byte[] bytes = FSTUtil.getConf().asByteArray(object);
-        ByteBuffer byteBuffer = ByteBuffer.allocateDirect(4 + bytes.length);
-        byteBuffer.putInt(bytes.length);
-        byteBuffer.put(bytes);
-        byteBuffer.rewind(); // 这一步真是搞死人啊。原来ByteBuffer.warp()的时候，position是0。。
-        return byteBuffer;
+    public static FSTConfiguration getJsonConf() {
+        return JSON_CONF;
     }
+
+
 }

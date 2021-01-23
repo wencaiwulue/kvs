@@ -1,12 +1,12 @@
 package raft.processor;
 
 import db.core.StateMachine;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import raft.LogEntry;
 import raft.Node;
-import rpc.RpcClient;
 import rpc.model.requestresponse.*;
+import rpc.netty.pub.RpcClient;
 import util.BackupUtil;
 import util.RetryUtil;
 
@@ -27,7 +27,7 @@ import java.util.function.Function;
  */
 public class InstallSnapshotRequestProcessor implements Processor {
 
-    private static final Logger LOGGER = LogManager.getLogger(InstallSnapshotRequestProcessor.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(InstallSnapshotRequestProcessor.class);
 
     @Override
     public boolean supports(Request req) {
@@ -46,7 +46,7 @@ public class InstallSnapshotRequestProcessor implements Processor {
         try {
             fileChannel = FileChannel.open(Path.of(request.filename), StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
         } catch (IOException e) {
-            LOGGER.error(e);
+            LOGGER.error(e.getMessage());
         }
         assert fileChannel != null;
 

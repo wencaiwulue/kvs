@@ -2,8 +2,8 @@ package db.core;
 
 import db.core.storage.MapStorage;
 import db.core.storage.StorageEngine;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import raft.LogEntry;
 import util.BackupUtil;
 import util.FileUtil;
@@ -34,7 +34,7 @@ import static util.BackupUtil.write;
  * @since 4/1/2020 10:53
  */
 public class LogDB {
-    private static final Logger LOG = LogManager.getLogger(LogDB.class);
+    private static final Logger LOG = LoggerFactory.getLogger(LogDB.class);
 
     private final StorageEngine engine;
     public volatile int lastLogIndex;
@@ -85,7 +85,7 @@ public class LogDB {
                 BackupUtil.readFromDisk(this.engine, dbFile);
             }
         } catch (IOException e) {
-            LOG.error(e);
+            LOG.error(e.getMessage());
         } finally {
             this.writeLock.unlock();
         }

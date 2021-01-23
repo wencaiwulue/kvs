@@ -1,11 +1,13 @@
 package db.core;
 
 import db.operationservice.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import raft.LogEntry;
 import raft.Node;
 import raft.NodeAddress;
-import rpc.RpcClient;
 import rpc.model.requestresponse.AppendEntriesRequest;
+import rpc.netty.pub.RpcClient;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -16,6 +18,8 @@ import java.util.List;
  * @since 4/15/2020 15:18
  */
 public class StateMachine {
+    private static final Logger LOGGER = LoggerFactory.getLogger(StateMachine.class);
+
 
     public static List<Service> services = Arrays.asList(new ExpireOperationService(), new GetOperationService(), new RemoveOperationService(), new SetOperationService());
 
@@ -44,7 +48,7 @@ public class StateMachine {
             }
         }
 
-        Node.LOGGER.error("Operation:" + entry.getOperation() + " is not support.");
+        LOGGER.error("Operation:" + entry.getOperation() + " is not support.");
         throw new UnsupportedOperationException("Operation:" + entry.getOperation() + " is not support.");
     }
 }

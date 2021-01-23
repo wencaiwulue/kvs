@@ -19,8 +19,8 @@ public class JsonTest {
         start = System.nanoTime();
         for (int i = 0; i < n; i++) {
             String s = String.valueOf(i);
-            byte[] bytes = FSTUtil.getConf().asByteArray(s);
-            String o = (String) FSTUtil.getConf().asObject(bytes);
+            byte[] bytes = FSTUtil.getBinaryConf().asByteArray(s);
+            String o = (String) FSTUtil.getBinaryConf().asObject(bytes);
         }
         System.out.println(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
     }

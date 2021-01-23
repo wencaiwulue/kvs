@@ -20,15 +20,20 @@
         <junit.version>5.6.2</junit.version>
         <ecplise-collection.version>10.2.0</ecplise-collection.version>
         <jetbrains-annotations.version>20.1.0</jetbrains-annotations.version>
+        <netty.version>4.1.56.Final</netty.version>
     </properties>
 
     <dependencies>
         <dependency>
-            <groupId>org.apache.logging.log4j</groupId>
-            <artifactId>log4j-core</artifactId>
-            <version>${log4j.version}</version>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>1.7.22</version>
         </dependency>
-
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-all</artifactId>
+            <version>${netty.version}</version>
+        </dependency>
         <!--   delete after finished   -->
         <dependency>
             <groupId>org.projectlombok</groupId>

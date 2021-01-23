@@ -3,6 +3,7 @@ package raft;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 import java.io.Serializable;
 import java.net.InetSocketAddress;
@@ -18,7 +19,7 @@ import java.util.Objects;
 public class NodeAddress implements Serializable {
     private static final long serialVersionUID = 3723897904539137708L;
 
-//    public volatile boolean alive; // host status
+    //    public volatile boolean alive; // host status
     private InetSocketAddress socketAddress;
 
     @Override

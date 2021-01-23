@@ -28,7 +28,7 @@ public class RedisEngine implements StorageEngine {
     public <T> T get(String key) {
         String s = JEDIS.get(key);
         if (s != null) {
-            return (T) FSTUtil.getConf().asObject(s.getBytes());
+            return (T) FSTUtil.getBinaryConf().asObject(s.getBytes());
         } else {
             return null;
         }
@@ -36,7 +36,7 @@ public class RedisEngine implements StorageEngine {
 
     @Override
     public <T> boolean set(String key, T t) {
-        JEDIS.set(key, FSTUtil.getConf().asJsonString(t));
+        JEDIS.set(key, FSTUtil.getBinaryConf().asJsonString(t));
         return true;
     }
 
@@ -53,7 +53,7 @@ public class RedisEngine implements StorageEngine {
         Map<String, Object> map = new HashMap<>();
         keys.parallelStream().forEach(e -> {
             String s = JEDIS.get(e);
-            Object o = FSTUtil.getConf().asObject(s.getBytes());
+            Object o = FSTUtil.getBinaryConf().asObject(s.getBytes());
             map.put(e, o);
         });
         return (Iterator<T>) map.entrySet().iterator();

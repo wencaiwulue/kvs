@@ -1,21 +1,23 @@
 package raft;
 
+import com.google.common.collect.Sets;
 import db.core.Config;
 import db.core.DB;
 import db.core.LogDB;
 import lombok.Data;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import raft.enums.Role;
 import raft.processor.Processor;
-import rpc.RpcClient;
 import rpc.model.requestresponse.*;
-import util.FSTUtil;
+import rpc.netty.pub.RpcClient;
+import rpc.netty.server.WebSocketServer;
 import util.ThreadUtil;
 
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.net.InetSocketAddress;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
@@ -38,7 +40,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  */
 @Data
 public class Node implements Runnable {
-    public static final Logger LOGGER = LogManager.getLogger(Node.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(Node.class);
 
     public volatile boolean start;
 
@@ -73,6 +75,16 @@ public class Node implements Runnable {
     private Runnable heartbeatTask;
     public Runnable electTask;
 
+    public static Node of(NodeAddress nodeAddress) {
+        InetSocketAddress p8001 = new InetSocketAddress("127.0.0.1", 8001);
+        InetSocketAddress p8002 = new InetSocketAddress("127.0.0.1", 8002);
+        InetSocketAddress p8003 = new InetSocketAddress("127.0.0.1", 8003);
+        NodeAddress p1 = new NodeAddress(p8001);
+        NodeAddress p2 = new NodeAddress(p8002);
+        NodeAddress p3 = new NodeAddress(p8003);
+        return new Node(nodeAddress, Sets.newHashSet(p1, p2, p3));
+    }
+
     public Node(NodeAddress address, Set<NodeAddress> allNodeAddresses) {
         this.address = address;
         this.allNodeAddresses = allNodeAddresses;
@@ -101,7 +113,7 @@ public class Node implements Runnable {
             // electing start
             elect();
         };
-        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(this.electTask, 0, 10, TimeUnit.MILLISECONDS);
+        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(this.electTask, 0, 400, TimeUnit.MILLISECONDS);
 
         this.heartbeatTask = () -> {
             if (!this.start) {
@@ -129,7 +141,7 @@ public class Node implements Runnable {
                         } catch (ClosedChannelException e) {
                             LOGGER.error("who close the channel !!");
                         } catch (IOException e) {
-                            LOGGER.error(e);
+                            LOGGER.error(e.getMessage());
                         }
                         InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) RpcClient.doRequest(remote, new InstallSnapshotRequest(this.address, this.currentTerm, this.logdb.dir.toString(), size));
                         if (snapshotResponse == null || !snapshotResponse.isSuccess()) {
@@ -137,14 +149,14 @@ public class Node implements Runnable {
                         }
                     }
 
-                    LOGGER.error("收到follower:{}的心跳回包", remote.getSocketAddress().getPort());
+                    LOGGER.error("{} --> {}, receive heartbeat response", remote.getSocketAddress().getPort(), WebSocketServer.PORT);
                 }
                 this.nextElectTime = this.nextElectTime();
                 this.nextHeartbeatTime = System.nanoTime() + Config.HEARTBEAT_RATE.toNanos();
-                LOGGER.error("成功推迟选举");
+                LOGGER.info("delay elect successfully");
             }
         };
-        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(this.heartbeatTask, 0, 10, TimeUnit.MILLISECONDS);
+        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(this.heartbeatTask, 0, 200, TimeUnit.MILLISECONDS);
         this.start = true;
     }
 
@@ -159,7 +171,7 @@ public class Node implements Runnable {
         long start = System.nanoTime();
         this.writeLock.lock();
         try {
-            AtomicInteger ai = new AtomicInteger(1);//先给自己投一票
+            AtomicInteger ticket = new AtomicInteger(1);//先给自己投一票
             AtomicBoolean fail = new AtomicBoolean(false);
             this.role = Role.CANDIDATE;// 改变状态为candidate
             CountDownLatch latch = new CountDownLatch(this.allNodeAddressExcludeMe().size());
@@ -170,18 +182,18 @@ public class Node implements Runnable {
                     try {
                         VoteResponse response = (VoteResponse) RpcClient.doRequest(addr, new VoteRequest(this.address, this.currentTerm + 1, this.logdb.lastLogIndex, this.logdb.lastLogTerm));
                         if (response != null) {
-                            LOGGER.error("收到从:{}的投票回包:{}", addr, response);
+                            LOGGER.error("{} --> {}, vote response: {}", addr.getSocketAddress().getPort(), WebSocketServer.PORT, response.toString());
                             if (response.isGrant()) {
-                                ai.addAndGet(1);
+                                ticket.addAndGet(1);
                             } else if (response.getTerm() > this.currentTerm) {
                                 this.role = Role.FOLLOWER;
                                 this.currentTerm = response.getTerm();
                                 fail.set(true);
                             } else {
-                                LOGGER.error("竟然不投票。远端主机为: {}", addr);
+                                LOGGER.error("{} --> {}, no vote response", addr.getSocketAddress().getPort(), WebSocketServer.PORT);
                             }
                         } else {
-                            LOGGER.error("报错了。远端主机为: {}", addr);
+                            LOGGER.error("{} --> {}, null vote response", addr.getSocketAddress().getPort(), WebSocketServer.PORT);
                         }
                     } finally {
                         latch.countDown();
@@ -201,24 +213,24 @@ public class Node implements Runnable {
                 LOGGER.error("elect interrupted, cancel all task");
             }
             if (fail.getAcquire()) {
-                return;
+                Arrays.stream(futures).forEach(e -> e.cancel(true));
+                LOGGER.error("elect failed, cancel all task");
             }
             // 0-150ms, 随机一段时间，避免同时选举
-            int i = BigDecimal.valueOf(this.allNodeAddresses.size() / 2D).setScale(0, RoundingMode.UP).intValue();
-            if (ai.get() >= i) {// 超过半数了，成功了
-                LOGGER.error("选举成功，选出leader了{}", this.address);
+            int mostTicketNum = BigDecimal.valueOf(this.allNodeAddresses.size() / 2D).setScale(0, RoundingMode.UP).intValue() + 1;
+            if (ticket.get() >= mostTicketNum) {// 超过半数了，成功了
+                LOGGER.info("elect successfully，leader info: {}", this.address);
                 this.currentTerm = this.currentTerm + 1;
                 this.leaderAddress = this.address;
                 this.role = Role.LEADER;
                 this.nextHeartbeatTime = -1;// 立即心跳
                 ThreadUtil.getThreadPool().submit(this.heartbeatTask);
             } else {
-                LOGGER.error("ticket: {} and expect: {}", ai.get(), i);
-                LOGGER.error("elect failed");
+                LOGGER.info("elect failed, expect ticket is {}, not received {}", mostTicketNum, ticket.get());
             }
             this.nextElectTime = this.nextElectTime();// 0-150ms, 随机一段时间，避免同时选举
         } finally {
-            System.out.println("选举花费时间：" + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + " ms");
+            System.out.println("elect spent time: " + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) + "ms");
             this.writeLock.unlock();
         }
     }
@@ -233,9 +245,9 @@ public class Node implements Runnable {
     }
 
     // 可以拆分为服务器之间与服务器和client两种，也就是状态协商和curd
-    public void handle(Request request, SocketChannel channel) {
-        if (request == null) return;
-        if (!this.start) return;
+    public Response handle(Request request) {
+        if (request == null) return null;
+        if (!this.start) return null;
 
         Response response = null;
         for (Processor processor : this.processors) {
@@ -248,14 +260,7 @@ public class Node implements Runnable {
         if (response != null) {
             response.requestId = request.requestId;
         }
-
-        try {
-            channel.write(FSTUtil.asArrayWithLength(response));
-        } catch (ClosedChannelException e) {
-            LOGGER.error("这里的channel失效了, 需要重试吗?", e);
-        } catch (IOException e) {
-            LOGGER.error("回复失败。", e);
-        }
+        return response;
     }
 
     public Set<NodeAddress> allNodeAddressExcludeMe() {

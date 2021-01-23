@@ -5,8 +5,8 @@ import com.esotericsoftware.kryo.KryoException;
 import db.core.CacheBuffer;
 import db.core.Config;
 import db.core.storage.StorageEngine;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import raft.LogEntry;
 
 import java.io.File;
@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * @since 3/31/2020 20:56
  */
 public class BackupUtil {
-    private static final Logger LOG = LogManager.getLogger(BackupUtil.class);
+    private static final Logger LOG = LoggerFactory.getLogger(BackupUtil.class);
 
     /*
      * 写入磁盘格式为
@@ -108,7 +108,7 @@ public class BackupUtil {
         try {
             return new RandomAccessFile(file, "rw");
         } catch (FileNotFoundException e) {
-            LOG.error(e);
+            LOG.error(e.getMessage());
             return null;
         }
     }
@@ -152,7 +152,7 @@ public class BackupUtil {
             map.putInt(bytes.length);
             map.put(bytes);
         } catch (BufferOverflowException e) {
-            LOG.error(e);
+            LOG.error(e.getMessage());
             e.printStackTrace();
         }
     }
@@ -186,7 +186,7 @@ public class BackupUtil {
                 mapped = channel.map(FileChannel.MapMode.READ_WRITE, position, size);
             } catch (IOException e) {
                 e.printStackTrace();
-                LOG.error(e);
+                LOG.error(e.getMessage());
             }
             if (mapped == null) return;
 
@@ -249,7 +249,7 @@ public class BackupUtil {
                 mapped = channel.map(FileChannel.MapMode.READ_WRITE, position, size);
             } catch (IOException e) {
                 e.printStackTrace();
-                LOG.error(e);
+                LOG.error(e.getMessage());
             }
             if (mapped == null) return;
 
@@ -308,7 +308,7 @@ public class BackupUtil {
                 mapped = channel.map(FileChannel.MapMode.READ_WRITE, position, size);
             } catch (IOException e) {
                 e.printStackTrace();
-                LOG.error(e);
+                LOG.error(e.getMessage());
             }
             if (mapped == null) return;
 

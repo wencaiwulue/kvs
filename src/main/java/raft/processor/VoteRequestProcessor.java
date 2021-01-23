@@ -1,7 +1,7 @@
 package raft.processor;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import raft.Node;
 import raft.enums.Role;
 import rpc.model.requestresponse.Request;
@@ -15,7 +15,7 @@ import rpc.model.requestresponse.VoteResponse;
  */
 public class VoteRequestProcessor implements Processor {
 
-    private static final Logger LOGGER = LogManager.getLogger(VoteRequestProcessor.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(VoteRequestProcessor.class);
 
     @Override
     public boolean supports(Request req) {
@@ -27,7 +27,7 @@ public class VoteRequestProcessor implements Processor {
         node.getWriteLock().lock();
         try {
             VoteRequest request = (VoteRequest) req;
-            LOGGER.error("收到vote请求.from:{} to {}, vote info:{}", request.getCandidateId().getSocketAddress().getPort(), node.getAddress().getSocketAddress().getPort(), request);
+            LOGGER.error("{} --> {}, vote request info: {}", request.getCandidateId().getSocketAddress().getPort(), node.getAddress().getSocketAddress().getPort(), request);
             int i = Long.compare(request.getTerm(), node.currentTerm);
 
             int j = Long.compare(request.getLastLogTerm(), node.logdb.lastLogTerm);

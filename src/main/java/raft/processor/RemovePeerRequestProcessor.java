@@ -1,11 +1,11 @@
 package raft.processor;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import raft.Node;
 import raft.NodeAddress;
-import rpc.RpcClient;
 import rpc.model.requestresponse.*;
+import rpc.netty.pub.RpcClient;
 
 /**
  * @author naison
@@ -13,7 +13,7 @@ import rpc.model.requestresponse.*;
  */
 public class RemovePeerRequestProcessor implements Processor {
 
-    private static final Logger LOGGER = LogManager.getLogger(RemovePeerRequestProcessor.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(RemovePeerRequestProcessor.class);
 
     @Override
     public boolean supports(Request req) {

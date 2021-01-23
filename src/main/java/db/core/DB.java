@@ -4,8 +4,8 @@ import com.google.common.hash.BloomFilter;
 import com.google.common.hash.Funnels;
 import db.core.storage.MapStorage;
 import db.core.storage.StorageEngine;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import util.BackupUtil;
 import util.FileUtil;
 import util.KryoUtil;
@@ -37,7 +37,7 @@ import java.util.stream.Collectors;
  * @since 4/1/2020 10:53
  */
 public class DB {
-    private static final Logger log = LogManager.getLogger(DB.class);
+    private static final Logger log = LoggerFactory.getLogger(DB.class);
 
     private final CacheBuffer<CacheBuffer.Item> buffer = new CacheBuffer<>(Config.CACHE_SIZE, Config.CACHE_BACKUP_THRESHOLD);// 这里是缓冲区，也就是每隔一段时间备份append的数据，或者这个buffer满了就备份数据
     public final StorageEngine storage;
@@ -90,7 +90,7 @@ public class DB {
                 BackupUtil.readFromDisk(this.storage, dbFile);
             }
         } catch (IOException e) {
-            log.error(e);
+            log.error(e.getMessage());
         } finally {
             this.writeLock.unlock();
         }

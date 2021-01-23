@@ -1,14 +1,14 @@
 package raft.processor;
 
 import db.core.StateMachine;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import raft.LogEntry;
 import raft.Node;
 import raft.NodeAddress;
 import raft.enums.CURDOperation;
-import rpc.RpcClient;
 import rpc.model.requestresponse.*;
+import rpc.netty.pub.RpcClient;
 
 import java.util.Collections;
 import java.util.List;
@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class CURDProcessor implements Processor {
 
-    private static final Logger LOGGER = LogManager.getLogger(CURDProcessor.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(CURDProcessor.class);
 
     @Override
     public boolean supports(Request req) {

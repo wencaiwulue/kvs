@@ -1,8 +1,8 @@
 package raft.processor;
 
 import db.core.StateMachine;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import raft.LogEntry;
 import raft.Node;
 import raft.enums.Role;
@@ -13,7 +13,7 @@ import rpc.model.requestresponse.*;
  * @since 4/13/2020 14:42
  */
 public class AppendEntriesRequestProcessor implements Processor {
-    private static final Logger LOGGER = LogManager.getLogger(AppendEntriesRequestProcessor.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(AppendEntriesRequestProcessor.class);
 
     @Override
     public boolean supports(Request req) {
