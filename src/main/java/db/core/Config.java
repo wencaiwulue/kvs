@@ -1,7 +1,6 @@
 package db.core;
 
 import com.google.common.collect.Range;
-import util.ParseUtil;
 
 import java.nio.file.Path;
 import java.time.Duration;
@@ -14,20 +13,24 @@ import java.time.Duration;
  */
 public interface Config {
 
-    int PORT = Math.max(8000, ParseUtil.parseInt(System.getProperty("port")));
+    int PORT = Integer.parseInt(System.getenv("port"));
     Path DB_DIR = Path.of("C:\\Users\\89570\\Documents\\kvs_" + PORT + "\\db");
     Path LOG_DIR = Path.of("C:\\Users\\89570\\Documents\\kvs_" + PORT + "\\log");
 
     Duration APPEND_RATE = Duration.ofSeconds(1); // append per second
     Duration SNAPSHOT_RATE = Duration.ofMinutes(1); // snapshot per second
 
-    int BACKUP_MODE = 2;// 备份方式为增量还是快照，或者是混合模式, 0--append, 1--snapshot, 2--append+snapshot
-    int CACHE_SIZE = 1000 * 1000 * 10;// 缓冲区大小
-    Range<Integer> CACHE_BACKUP_THRESHOLD = Range.closed((int) (0.2 * CACHE_SIZE), (int) (0.8 * CACHE_SIZE)); // 如果超过这个阈值，就启动备份写出流程，低于这个值就停止写出。
+    // backup data mode. 0: append, 1: snapshot, 2: append + snapshot
+    int BACKUP_MODE = 2;
+    int CACHE_SIZE = 1000 * 1000 * 10;
+    Range<Integer> CACHE_BACKUP_THRESHOLD = Range.closed((int) (0.2 * CACHE_SIZE), (int) (0.8 * CACHE_SIZE));
 
-    int MAX_FILE_SIZE = Integer.MAX_VALUE;// 大概文件大小为2gb, 不能超过int的最大值
+    // Integer.MAX_VALUE byte is about 2gb disk file
+    int MAX_FILE_SIZE = Integer.MAX_VALUE;
 
-    Duration HEARTBEAT_RATE = Duration.ofMillis(200);// heartbeat per 20 millisecond, the last and this heart beat difference is 20ms, also means if one node lastHeartBeat + heartBeatRate < currentNanoTime, leader dead. should elect leader
-    Duration ELECT_RATE = Duration.ofMillis(800); // elect per 400 millisecond if not delay, the last and this heart beat difference is 400ms, also means if one node lastHeartBeat + heartBeatRate < currentNanoTime, leader dead. should elect leader
+    // heartbeat per 20 millisecond, the last and this heart beat difference is 20ms, also means if one node lastHeartBeat + heartBeatRate < currentNanoTime, leader dead. should elect leader
+    Duration HEARTBEAT_RATE = Duration.ofMillis(200);
+    // elect per 400 millisecond if not delay, the last and this heart beat difference is 400ms, also means if one node lastHeartBeat + heartBeatRate < currentNanoTime, leader dead. should elect leader
+    Duration ELECT_RATE = Duration.ofMillis(800);
 
 }

@@ -59,7 +59,8 @@ public class AppendEntriesRequestProcessor implements Processor {
             } else {
                 if (request.getCommittedIndex() > node.committedIndex) {
                     long size = request.getCommittedIndex() - request.getPrevLogIndex();
-                    if (size < 100) {// 如果有许多的更新，就直接InstallSnapshot
+                    // if out of time too much, the use InstallSnapshot to scp zip file and install
+                    if (size < 100) {
                         for (long i = 1; i < size + 1; i++) {
                             LogEntry entry = (LogEntry) node.logdb.get(String.valueOf(request.getPrevLogIndex() + i));
                             if (entry != null) {

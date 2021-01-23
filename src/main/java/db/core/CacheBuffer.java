@@ -10,8 +10,11 @@ import java.util.concurrent.LinkedBlockingQueue;
  * @since 4/28/2020 16:39
  */
 public class CacheBuffer<T> {
-    private final Range<Integer> threshold;// 如果超过这个阈值，就启动备份写出流程, 低于这个值就停止写出
-    private final BlockingQueue<T> buffer;// 这里是缓冲区，也就是每隔一段时间备份append的数据，或者这个buffer满了就备份数据
+    // if out of range, start write out
+    // if blow the range, stop write out
+    private final Range<Integer> threshold;
+    // cache, schedule to flush data to disk, or if this cache is full to flush data to disk
+    private final BlockingQueue<T> buffer;
 
     public CacheBuffer(int size, Range<Integer> range) {
         this.threshold = range;

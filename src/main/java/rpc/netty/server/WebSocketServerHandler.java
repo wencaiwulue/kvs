@@ -86,12 +86,12 @@ public class WebSocketServerHandler extends SimpleChannelInboundHandler<Object> 
                 Response response = WebSocketServer.NODE.handle((Request) object);
                 System.out.printf("%s --> %s message: %s\n", remote.getPort(), WebSocketServer.PORT, object.toString());
                 if (response != null) {
-                    System.out.printf("%s --> %s reponse: %s\n", WebSocketServer.PORT, remote.getPort(), response.toString());
+                    System.out.printf("%s --> %s response: %s\n", WebSocketServer.PORT, remote.getPort(), response.toString());
                     byte[] byteArray = FSTUtil.getBinaryConf().asByteArray(response);
                     ctx.writeAndFlush(new BinaryWebSocketFrame(Unpooled.wrappedBuffer(byteArray)))
                             .addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
                 } else {
-                    System.out.println("server handler, response is empty ??");
+                    System.out.println("Server handler, response is empty ??");
                 }
             }
         }

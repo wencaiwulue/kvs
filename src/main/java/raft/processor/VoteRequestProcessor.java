@@ -34,7 +34,10 @@ public class VoteRequestProcessor implements Processor {
                 j = Long.compare(request.getLastLogIndex(), node.logdb.lastLogIndex);
             }
 
-            if (i > 0 || (j >= 0 && node.lastVoteFor == null)) {// 对方term比我大，或者还没投过票
+            // if request term is bigger than current node term
+            // or
+            // this term don't vote for anyone
+            if (i > 0 || (j >= 0 && node.lastVoteFor == null)) {
                 node.lastVoteFor = request.getCandidateId();
                 node.currentTerm = request.getTerm();
                 node.role = Role.FOLLOWER;

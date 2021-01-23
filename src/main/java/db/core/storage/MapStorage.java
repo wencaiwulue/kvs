@@ -12,7 +12,8 @@ public class MapStorage implements StorageEngine {
     public final ConcurrentHashMap<String, Object> map;// this can be replaced to RockDB、LevelDB or B-tree
 
     public MapStorage() {
-        this.map = new ConcurrentHashMap<>(/*1 << 30*/); // 这是hashMap的容量
+        // 1 << 30 is hashmap max capacity
+        this.map = new ConcurrentHashMap<>(/*1 << 30*/);
     }
 
     @Override
