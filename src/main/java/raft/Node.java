@@ -18,7 +18,6 @@ import util.ThreadUtil;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.net.InetSocketAddress;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.FileChannel;
 import java.nio.file.StandardOpenOption;
@@ -81,13 +80,7 @@ public class Node implements INode {
     private Runnable electTask;
 
     public static Node of(NodeAddress nodeAddress) {
-        InetSocketAddress p8001 = new InetSocketAddress("127.0.0.1", 8001);
-        InetSocketAddress p8002 = new InetSocketAddress("127.0.0.1", 8002);
-        InetSocketAddress p8003 = new InetSocketAddress("127.0.0.1", 8003);
-        NodeAddress p1 = new NodeAddress(p8001);
-        NodeAddress p2 = new NodeAddress(p8002);
-        NodeAddress p3 = new NodeAddress(p8003);
-        return new Node(nodeAddress, Sets.newHashSet(p1, p2, p3));
+        return new Node(nodeAddress, Sets.newHashSet(nodeAddress));
     }
 
     public Node(NodeAddress localAddress, Set<NodeAddress> allNodeAddresses) {
@@ -165,8 +158,8 @@ public class Node implements INode {
     @SuppressWarnings("NonAtomicOperationOnVolatileField")
     private void elect() {
         // only one node
-        if (this.allNodeAddressExcludeMe().isEmpty()) {
-            LOGGER.info("Singleton cluster");
+        if (this.allNodeAddresses.size() < 3) {
+            LOGGER.info("Can't create a cluster, current node number is {}, cluster minimum node number is 3", this.allNodeAddresses.size());
             return;
         }
 

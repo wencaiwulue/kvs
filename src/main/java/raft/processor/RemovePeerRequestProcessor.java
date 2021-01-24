@@ -6,6 +6,7 @@ import raft.Node;
 import raft.NodeAddress;
 import rpc.model.requestresponse.*;
 import rpc.netty.RpcClient;
+import util.ThreadUtil;
 
 /**
  * @author naison
@@ -25,18 +26,14 @@ public class RemovePeerRequestProcessor implements Processor {
         RemovePeerRequest request = (RemovePeerRequest) req;
         node.getAllNodeAddresses().remove(request.peer);
 
-        if (request.peer.equals(request.sender)) {
-            return new RemovePeerResponse();// 非主节点，终结 exit 1
-        }
-
         if (!node.isLeader()) {
             if (node.getLeaderAddress() == null) {
-                return RpcClient.doRequest(request.peer, new RemovePeerRequest(node.getLocalAddress(), node.getLocalAddress()));
+                return new RemovePeerResponse();
             } else {
-                if (request.sender == null) {
-                    return RpcClient.doRequest(node.getLeaderAddress(), request);
-                } else {
+                if (node.getLeaderAddress().equals(request.getSender())) {
                     return new RemovePeerResponse();// exit 2
+                } else {
+                    return RpcClient.doRequest(node.getLeaderAddress(), request);
                 }
             }
         } else {
@@ -44,7 +41,7 @@ public class RemovePeerRequestProcessor implements Processor {
             // each node receive leader command, will ask the remove peer to remove itself
             request.sender = node.getLeaderAddress();
             for (NodeAddress nodeAddress : node.allNodeAddressExcludeMe()) {
-                RpcClient.doRequest(nodeAddress, request);
+                ThreadUtil.getThreadPool().execute(() -> RpcClient.doRequest(nodeAddress, request));
             }
             PowerResponse response = (PowerResponse) RpcClient.doRequest(request.peer, new PowerRequest(true, true));
             if (response != null && response.isSuccess()) {
