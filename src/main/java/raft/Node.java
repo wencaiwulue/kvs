@@ -229,7 +229,11 @@ public class Node implements INode {
                 this.leaderAddress = this.localAddress;
                 this.role = Role.LEADER;
                 this.nextHeartbeatTime = -1;
-                ThreadUtil.getThreadPool().submit(this.heartbeatTask);
+                ThreadUtil.getThreadPool().submit(() -> {
+                    this.heartbeatTask.run();
+                    this.allNodeAddressExcludeMe().forEach(e -> RpcClient.doRequestAsync(e, new SynchronizeStateRequest(this.getAllNodeAddresses()), (res) -> {
+                    }));
+                });
             } else {
                 LOGGER.info("Elect failed, expect ticket is {}, but received {}", mostTicketNum, ticket.get());
             }
