@@ -7,7 +7,7 @@ import raft.LogEntry;
 import raft.Node;
 import raft.NodeAddress;
 import rpc.model.requestresponse.AppendEntriesRequest;
-import rpc.netty.pub.RpcClient;
+import rpc.netty.RpcClient;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -30,9 +30,9 @@ public class StateMachine {
         for (LogEntry entry : entries) {
             writeLogToDB(leader, entry);
         }
-        leader.committedIndex = entries.get(entries.size() - 1).index;
+        leader.setCommittedIndex(entries.get(entries.size() - 1).getIndex());
 
-        AppendEntriesRequest request = new AppendEntriesRequest(Collections.emptyList(), leader.address, leader.currentTerm, leader.getLastAppliedTerm(), leader.getLastAppliedTerm(), leader.committedIndex);
+        AppendEntriesRequest request = new AppendEntriesRequest(Collections.emptyList(), leader.getLocalAddress(), leader.getCurrentTerm(), leader.getLastAppliedTerm(), leader.getLastAppliedTerm(), leader.getCommittedIndex());
         for (NodeAddress remote : leader.allNodeAddressExcludeMe()) {
             RpcClient.doRequest(remote, request);
         }

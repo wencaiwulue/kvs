@@ -16,7 +16,7 @@ public class RemoveOperationService implements Service {
 
     @Override
     public boolean service(Node node, LogEntry logEntry) {
-        node.db.remove(logEntry.getKey());
+        node.getDb().remove(logEntry.getKey());
         return true;
     }
 }

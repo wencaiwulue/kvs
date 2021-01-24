@@ -16,7 +16,7 @@ public class SetOperationService implements Service {
 
     @Override
     public boolean service(Node node, LogEntry logEntry) {
-        node.db.set(logEntry.getKey(), logEntry.getValue());
+        node.getDb().set(logEntry.getKey(), logEntry.getValue());
         return true;
     }
 }

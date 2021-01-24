@@ -2,6 +2,9 @@ package db.core;
 
 import db.core.storage.MapStorage;
 import db.core.storage.StorageEngine;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import raft.LogEntry;
@@ -33,19 +36,22 @@ import static util.BackupUtil.write;
  * @author naison
  * @since 4/1/2020 10:53
  */
+@Getter
+@Setter
+@ToString
 public class LogDB {
     private static final Logger LOG = LoggerFactory.getLogger(LogDB.class);
 
     private final StorageEngine engine;
-    public volatile int lastLogIndex;
-    public volatile int lastLogTerm;
+    private volatile int lastLogIndex;
+    private volatile int lastLogTerm;
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Lock readLock = this.lock.readLock();
     private final Lock writeLock = this.lock.writeLock();
 
-    public final Path dir;
-    public List<File> file;
+    private final Path dir;
+    private List<File> file;
     private final AtomicReference<MappedByteBuffer> lastModify = new AtomicReference<>();
     private final AtomicInteger fileNumber = new AtomicInteger(0);
 

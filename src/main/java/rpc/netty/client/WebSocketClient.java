@@ -22,7 +22,7 @@ import org.slf4j.LoggerFactory;
 import rpc.netty.server.HeartBeatHandler;
 import rpc.netty.server.WebSocketServer;
 import rpc.netty.config.Constant;
-import rpc.netty.pub.RpcClient;
+import rpc.netty.RpcClient;
 
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -57,8 +57,8 @@ public final class WebSocketClient {
                                     pipeline.addLast(new IdleStateHandler(2, 3, 5, TimeUnit.SECONDS));
                                     pipeline.addLast(new HeartBeatHandler());
                                     DefaultHttpHeaders headers = new DefaultHttpHeaders();
-                                    headers.add(Constant.LOCALHOST, WebSocketServer.SELF.getHostName());
-                                    headers.add(Constant.LOCALPORT, WebSocketServer.SELF.getPort());
+                                    headers.add(Constant.LOCALHOST, WebSocketServer.SELF_ADDRESS.getHostName());
+                                    headers.add(Constant.LOCALPORT, WebSocketServer.SELF_ADDRESS.getPort());
                                     WebSocketClientHandshaker handshake = WebSocketClientHandshakerFactory.newHandshaker(uri, WebSocketVersion.V13, "diy-protocol", true, headers);
                                     ref.set(new WebSocketClientHandler(handshake, address));
                                     pipeline.addLast(ref.get());

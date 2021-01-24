@@ -5,7 +5,7 @@ import org.slf4j.LoggerFactory;
 import raft.Node;
 import raft.NodeAddress;
 import rpc.model.requestresponse.*;
-import rpc.netty.pub.RpcClient;
+import rpc.netty.RpcClient;
 
 /**
  * @author naison
@@ -41,26 +41,26 @@ public class AddPeerRequestProcessor implements Processor {
   public Response process(Request req, Node node) {
         AddPeerRequest request = (AddPeerRequest) req;
 
-        node.allNodeAddresses.add(request.getPeer());
+        node.getAllNodeAddresses().add(request.getPeer());
 
 //        if (request.getPeer().equals(request.getSender())) {
 //            return new AddPeerResponse();// 非主节点，终结 exit 1
 //        }
 
         if (!node.isLeader()) {
-            if (node.leaderAddress == null) {
+            if (node.getLeaderAddress() == null) {
                 return new AddPeerResponse();// exit 2
             } else {
-                if (node.leaderAddress.equals(request.getSender())) {
+                if (node.getLeaderAddress().equals(request.getSender())) {
                   return new AddPeerResponse();// exit 3
                 } else {
-                  return RpcClient.doRequest(node.leaderAddress, request);
+                  return RpcClient.doRequest(node.getLeaderAddress(), request);
                 }
             }
         } else {
             // leader will notify all node to add new peer,
             // each node receive leader command, will send
-            request.sender = node.leaderAddress;
+            request.sender = node.getLeaderAddress();
             for (NodeAddress nodeAddress : node.allNodeAddressExcludeMe()) {
                 RpcClient.doRequest(nodeAddress, request);
             }

@@ -24,59 +24,59 @@ public class AppendEntriesRequestProcessor implements Processor {
 
     @Override
     public Response process(Request req, Node node) {
-        node.writeLock.lock();
+        node.getWriteLock().lock();
         try {
             // push off elect
-            node.nextElectTime = node.nextElectTime();
+            node.setNextElectTime(node.nextElectTime());
             AppendEntriesRequest request = (AppendEntriesRequest) req;
-            LOGGER.error("{} --> {}, receive heartbeat, term: {}", request.getLeaderId().getSocketAddress().getPort(), WebSocketServer.PORT, request.getTerm());
-            if (request.getTerm() < node.currentTerm) {
+            LOGGER.error("{} --> {}, receive heartbeat, term: {}", request.getLeaderId().getSocketAddress().getPort(), node.getLocalAddress().getSocketAddress().getPort(), request.getTerm());
+            if (request.getTerm() < node.getCurrentTerm()) {
                 // start elect, because leader term is less than current nodes term
-                node.nextElectTime = -1;
-                node.role = Role.CANDIDATE;
-                return new AppendEntriesResponse(node.currentTerm, false, node.logdb.lastLogIndex);
-            } else if (request.getTerm() > node.currentTerm) {
-                node.currentTerm = request.getTerm();
-                node.leaderAddress = request.getLeaderId();
-                node.lastVoteFor = null;
-                node.role = Role.FOLLOWER;
+                node.setNextElectTime(-1);
+                node.setRole(Role.CANDIDATE);
+                return new AppendEntriesResponse(node.getCurrentTerm(), false, node.getLogdb().getLastLogIndex());
+            } else if (request.getTerm() > node.getCurrentTerm()) {
+                node.setCurrentTerm(request.getTerm());
+                node.setLeaderAddress(request.getLeaderId());
+                node.setLastVoteFor(null);
+                node.setRole(Role.FOLLOWER);
             }
 
-            if (!request.getLeaderId().equals(node.leaderAddress)) {
-                if (request.getTerm() + 1 > node.currentTerm) {
-                    node.currentTerm = request.getTerm() + 1;
-                    node.leaderAddress = null;
-                    node.lastVoteFor = null;
-                    node.role = Role.FOLLOWER;
-                    node.nextElectTime = -1;// 立即重新选举
-                    ThreadUtil.getThreadPool().execute(node.electTask);
+            if (!request.getLeaderId().equals(node.getLeaderAddress())) {
+                if (request.getTerm() + 1 > node.getCurrentTerm()) {
+                    node.setCurrentTerm(request.getTerm() + 1);
+                    node.setLeaderAddress(null);
+                    node.setLastVoteFor(null);
+                    node.setRole(Role.FOLLOWER);
+                    node.setNextElectTime(-1);// 立即重新选举
+                    ThreadUtil.getThreadPool().execute(node.getElectTask());
                 }
-                return new AppendEntriesResponse(request.getTerm() + 1, false, node.logdb.lastLogIndex);
+                return new AppendEntriesResponse(request.getTerm() + 1, false, node.getLogdb().getLastLogIndex());
             }
 
             if (!request.getEntries().isEmpty()) { // otherwise it's a heartbeat
-                node.logdb.save(request.getEntries());
+                node.getLogdb().save(request.getEntries());
             } else {
-                if (request.getCommittedIndex() > node.committedIndex) {
+                if (request.getCommittedIndex() > node.getCommittedIndex()) {
                     long size = request.getCommittedIndex() - request.getPrevLogIndex();
                     // if out of time too much, the use InstallSnapshot to scp zip file and install
                     if (size < 100) {
                         for (long i = 1; i < size + 1; i++) {
-                            LogEntry entry = (LogEntry) node.logdb.get(String.valueOf(request.getPrevLogIndex() + i));
+                            LogEntry entry = (LogEntry) node.getLogdb().get(String.valueOf(request.getPrevLogIndex() + i));
                             if (entry != null) {
                                 StateMachine.writeLogToDB(node, entry);
                             }
                         }
-                        node.committedIndex = request.getCommittedIndex();
+                        node.setCommittedIndex(request.getCommittedIndex());
                     } else {
                         // install snapshot
                         return new ErrorResponse();
                     }
                 }
             }
-            return new AppendEntriesResponse(node.currentTerm, true, node.logdb.lastLogIndex);
+            return new AppendEntriesResponse(node.getCurrentTerm(), true, node.getLogdb().getLastLogIndex());
         } finally {
-            node.writeLock.unlock();
+            node.getWriteLock().unlock();
         }
     }
 }

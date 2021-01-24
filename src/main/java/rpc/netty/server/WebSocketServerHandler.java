@@ -14,7 +14,7 @@ import org.slf4j.LoggerFactory;
 import rpc.model.requestresponse.Request;
 import rpc.model.requestresponse.Response;
 import rpc.netty.config.Constant;
-import rpc.netty.pub.RpcClient;
+import rpc.netty.RpcClient;
 import util.FSTUtil;
 
 import java.net.InetSocketAddress;
@@ -24,7 +24,7 @@ public class WebSocketServerHandler extends SimpleChannelInboundHandler<Object> 
     private static final Logger LOGGER = LoggerFactory.getLogger(WebSocketServerHandler.class);
 
     private WebSocketServerHandshaker handShaker;
-    private InetSocketAddress remote;
+    private InetSocketAddress remoteAddress;
 
     @Override
     public void channelRead0(ChannelHandlerContext ctx, Object msg) {
@@ -43,7 +43,7 @@ public class WebSocketServerHandler extends SimpleChannelInboundHandler<Object> 
     private void handleHttpRequest(ChannelHandlerContext ctx, FullHttpRequest req) {
         String localhost = req.headers().get(Constant.LOCALHOST);
         int localport = req.headers().getInt(Constant.LOCALPORT);
-        remote = new InetSocketAddress(localhost, localport);
+        remoteAddress = new InetSocketAddress(localhost, localport);
         // Handshake
         String uri = "wss://" + req.headers().get(HttpHeaderNames.HOST) + Constant.WEBSOCKET_PATH;
         WebSocketServerHandshakerFactory wsFactory = new WebSocketServerHandshakerFactory(uri, "diy-protocol", true, 5 * 1024 * 1024);
@@ -52,7 +52,8 @@ public class WebSocketServerHandler extends SimpleChannelInboundHandler<Object> 
             WebSocketServerHandshakerFactory.sendUnsupportedVersionResponse(ctx.channel());
         } else {
             handShaker.handshake(ctx.channel(), req);
-            RpcClient.addConnection(remote, ctx.channel());
+            RpcClient.addConnection(remoteAddress, ctx.channel());
+            LOGGER.info("{} --> {} create a socket connection", localport, WebSocketServer.SELF_ADDRESS.getPort());
         }
     }
 
@@ -76,14 +77,14 @@ public class WebSocketServerHandler extends SimpleChannelInboundHandler<Object> 
                 LOGGER.warn("object is null");
                 return;
             }
-            LOGGER.info("{} --> {} message: {}", remote.getPort(), WebSocketServer.SELF.getPort(), object.toString());
+            LOGGER.info("{} --> {} message: {}", remoteAddress.getPort(), WebSocketServer.SELF_ADDRESS.getPort(), object.toString());
             if (object instanceof Response) {
                 RpcClient.addResponse(((Response) object).requestId, (Response) object);
             } else if (object instanceof Request) {
-                Response response = WebSocketServer.NODE.handle((Request) object);
-                LOGGER.info("{} --> {} message: {}", remote.getPort(), WebSocketServer.PORT, object.toString());
+                Response response = WebSocketServer.iNode.handle((Request) object);
+                LOGGER.info("{} --> {} message: {}", remoteAddress.getPort(), WebSocketServer.SELF_ADDRESS.getPort(), object.toString());
                 if (response != null) {
-                    LOGGER.info("{} --> {} response: {}", WebSocketServer.PORT, remote.getPort(), response.toString());
+                    LOGGER.info("{} --> {} response: {}", WebSocketServer.SELF_ADDRESS.getPort(), remoteAddress.getPort(), response.toString());
                     byte[] byteArray = FSTUtil.getBinaryConf().asByteArray(response);
                     ctx.writeAndFlush(new BinaryWebSocketFrame(Unpooled.wrappedBuffer(byteArray)))
                             .addListener(ChannelFutureListener.CLOSE_ON_FAILURE);

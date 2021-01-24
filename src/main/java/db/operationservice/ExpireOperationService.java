@@ -18,7 +18,7 @@ public class ExpireOperationService implements Service {
 
     @Override
     public boolean service(Node node, LogEntry logEntry) {
-        node.db.expireKey(logEntry.getKey(), (int) logEntry.getValue(), TimeUnit.MILLISECONDS);
+        node.getDb().expireKey(logEntry.getKey(), (int) logEntry.getValue(), TimeUnit.MILLISECONDS);
         return false;
     }
 }

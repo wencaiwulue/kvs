@@ -4,14 +4,15 @@ import com.google.common.collect.Sets;
 import db.core.Config;
 import db.core.DB;
 import db.core.LogDB;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import raft.enums.Role;
 import raft.processor.Processor;
 import rpc.model.requestresponse.*;
-import rpc.netty.pub.RpcClient;
-import rpc.netty.server.WebSocketServer;
+import rpc.netty.RpcClient;
 import util.ThreadUtil;
 
 import java.io.IOException;
@@ -20,7 +21,6 @@ import java.math.RoundingMode;
 import java.net.InetSocketAddress;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.FileChannel;
-import java.nio.channels.SocketChannel;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
@@ -38,45 +38,47 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * @author naison
  * @since 3/14/2020 19:05
  */
-@Data
-public class Node implements Runnable {
+@Getter
+@Setter
+@ToString
+public class Node implements INode {
     private static final Logger LOGGER = LoggerFactory.getLogger(Node.class);
 
-    public volatile boolean start;
+    private volatile boolean start;
 
     // current node address
-    public NodeAddress address;
+    private NodeAddress localAddress;
     // all nodes address, include current node
-    public Set<NodeAddress> allNodeAddresses;
+    private Set<NodeAddress> allNodeAddresses;
 
-    public DB db;
-    public LogDB logdb;
+    private DB db;
+    private LogDB logdb;
     // default role is follower
-    public Role role = Role.FOLLOWER;
+    private Role role = Role.FOLLOWER;
 
-    public volatile long committedIndex;
+    private volatile long committedIndex;
     private AtomicLong lastAppliedIndex = new AtomicLong(0);
     private volatile int lastAppliedTerm = 0;
-    public volatile long nextIndex;
+    private volatile long nextIndex;
 
     // first elect can be longer than normal election time
-    public volatile long nextElectTime = this.nextElectTime() + TimeUnit.SECONDS.toMillis(5);
-    public volatile long nextHeartbeatTime /*= System.currentTimeMillis() + this.heartBeatRate*/;
+    private volatile long nextElectTime = this.nextElectTime() + TimeUnit.SECONDS.toMillis(5);
+    private volatile long nextHeartbeatTime /*= System.currentTimeMillis() + this.heartBeatRate*/;
 
-    public volatile int currentTerm = 0;
+    private volatile int currentTerm = 0;
     // current term whether voted or not
-    public volatile NodeAddress lastVoteFor;
+    private volatile NodeAddress lastVoteFor;
     // cluster leader address
-    public volatile NodeAddress leaderAddress;
+    private volatile NodeAddress leaderAddress;
 
-    public ReadWriteLock lock = new ReentrantReadWriteLock();
-    public Lock readLock = this.lock.readLock();
-    public Lock writeLock = this.lock.writeLock();
+    private ReadWriteLock lock = new ReentrantReadWriteLock();
+    private Lock readLock = this.lock.readLock();
+    private Lock writeLock = this.lock.writeLock();
 
     private List<Processor> processors = new ArrayList<>(10);
 
     private Runnable heartbeatTask;
-    public Runnable electTask;
+    private Runnable electTask;
 
     public static Node of(NodeAddress nodeAddress) {
         InetSocketAddress p8001 = new InetSocketAddress("127.0.0.1", 8001);
@@ -88,12 +90,12 @@ public class Node implements Runnable {
         return new Node(nodeAddress, Sets.newHashSet(p1, p2, p3));
     }
 
-    public Node(NodeAddress address, Set<NodeAddress> allNodeAddresses) {
-        this.address = address;
+    public Node(NodeAddress localAddress, Set<NodeAddress> allNodeAddresses) {
+        this.localAddress = localAddress;
         this.allNodeAddresses = allNodeAddresses;
         this.db = new DB(Config.DB_DIR);
         this.logdb = new LogDB(Config.LOG_DIR);
-        this.nextIndex = this.logdb.lastLogIndex + 1;
+        this.nextIndex = this.logdb.getLastLogIndex() + 1;
     }
 
     {
@@ -130,25 +132,26 @@ public class Node implements Runnable {
             // if current node role is leader, then needs to send heartbeat to other, tell them i am boss, i rule anything !!!
             if (isLeader()) {
                 for (NodeAddress remote : this.allNodeAddressExcludeMe()) {
-                    Response response = RpcClient.doRequest(remote, new AppendEntriesRequest(Collections.emptyList(), this.address, this.currentTerm, this.lastAppliedTerm, this.lastAppliedIndex.intValue(), this.committedIndex));
+                    Response response = RpcClient.doRequest(remote, new AppendEntriesRequest(Collections.emptyList(), this.localAddress, this.currentTerm, this.lastAppliedTerm, this.lastAppliedIndex.intValue(), this.committedIndex));
                     // install snapshot
                     if (response instanceof ErrorResponse) {// todo 这里约定的是如果心跳包回复ErrorResponse, 说明是out的节点，需要安装更新
                         long size = 0;
                         try {
                             // todo 这里需要根据index确定是哪一个文件，并且index要做到全局递增，这个怎么办？
-                            size = FileChannel.open(this.logdb.file.get(0).toPath(), StandardOpenOption.READ).size();
+                            size = FileChannel.open(this.logdb.getFile().get(0).toPath(), StandardOpenOption.READ).size();
                         } catch (ClosedChannelException e) {
                             LOGGER.error("who close the channel ?!!!");
                         } catch (IOException e) {
                             LOGGER.error(e.getMessage());
                         }
-                        InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) RpcClient.doRequest(remote, new InstallSnapshotRequest(this.address, this.currentTerm, this.logdb.dir.toString(), size));
+                        InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) RpcClient.doRequest(remote, new InstallSnapshotRequest(this.localAddress, this.currentTerm, this.logdb.getDir().toString(), size));
                         if (snapshotResponse == null || !snapshotResponse.isSuccess()) {
                             LOGGER.error("Install snapshot error, should retry?");
                         }
                     }
-
-                    LOGGER.error("{} --> {}, receive heartbeat response", remote.getSocketAddress().getPort(), WebSocketServer.PORT);
+                    if (response != null) {
+                        LOGGER.error("{} --> {}, receive heartbeat response", remote.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort());
+                    }
                 }
                 this.nextElectTime = this.nextElectTime();
                 this.nextHeartbeatTime = System.currentTimeMillis() + Config.HEARTBEAT_RATE.toMillis();
@@ -180,9 +183,9 @@ public class Node implements Runnable {
             for (NodeAddress addr : this.allNodeAddressExcludeMe()) {
                 Runnable r = () -> {
                     try {
-                        VoteResponse response = (VoteResponse) RpcClient.doRequest(addr, new VoteRequest(this.address, this.currentTerm, this.logdb.lastLogIndex, this.logdb.lastLogTerm));
+                        VoteResponse response = (VoteResponse) RpcClient.doRequest(addr, new VoteRequest(this.localAddress, this.currentTerm, this.logdb.getLastLogIndex(), this.logdb.getLastLogTerm()));
                         if (response != null) {
-                            LOGGER.error("{} --> {}, vote response: {}", addr.getSocketAddress().getPort(), WebSocketServer.PORT, response.toString());
+                            LOGGER.error("{} --> {}, vote response: {}", addr.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort(), response.toString());
                             if (this.role.equals(Role.CANDIDATE) && response.isGrant() && response.getTerm() == this.currentTerm) {
                                 ticket.incrementAndGet();
                             } else if (response.getTerm() > this.currentTerm) {
@@ -190,10 +193,10 @@ public class Node implements Runnable {
                                 this.currentTerm = response.getTerm();
                                 fail.set(true);
                             } else {
-                                LOGGER.error("{} --> {}, no vote response", addr.getSocketAddress().getPort(), WebSocketServer.PORT);
+                                LOGGER.error("{} --> {}, no vote response", addr.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort());
                             }
                         } else {
-                            LOGGER.error("{} --> {}, null vote response", addr.getSocketAddress().getPort(), WebSocketServer.PORT);
+                            LOGGER.error("{} --> {}, null vote response", addr.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort());
                         }
                     } finally {
                         latch.countDown();
@@ -220,9 +223,9 @@ public class Node implements Runnable {
             }
             int mostTicketNum = BigDecimal.valueOf(this.allNodeAddresses.size() / 2D).setScale(0, RoundingMode.UP).intValue();
             if (ticket.getAcquire() >= mostTicketNum) {
-                LOGGER.info("Elect successfully，leader info: {}", this.address);
+                LOGGER.info("Elect successfully，leader info: {}", this.localAddress);
                 this.currentTerm = this.currentTerm + 1;
-                this.leaderAddress = this.address;
+                this.leaderAddress = this.localAddress;
                 this.role = Role.LEADER;
                 this.nextHeartbeatTime = -1;
                 ThreadUtil.getThreadPool().submit(this.heartbeatTask);
@@ -238,7 +241,7 @@ public class Node implements Runnable {
     }
 
     public boolean isLeader() {
-        return this.address.equals(this.leaderAddress) && this.role == Role.LEADER;
+        return this.localAddress.equals(this.leaderAddress) && this.role == Role.LEADER;
     }
 
     public Response handle(Request request) {
@@ -262,7 +265,7 @@ public class Node implements Runnable {
 
     public Set<NodeAddress> allNodeAddressExcludeMe() {
         HashSet<NodeAddress> nodeAddresses = new HashSet<>(this.allNodeAddresses);
-        nodeAddresses.remove(this.address);
+        nodeAddresses.remove(this.localAddress);
         return nodeAddresses;
     }
 

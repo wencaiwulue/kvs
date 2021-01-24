@@ -10,7 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import rpc.model.requestresponse.Request;
 import rpc.model.requestresponse.Response;
-import rpc.netty.pub.RpcClient;
+import rpc.netty.RpcClient;
 import rpc.netty.server.WebSocketServer;
 import util.FSTUtil;
 
@@ -94,11 +94,11 @@ public class WebSocketClientHandler extends SimpleChannelInboundHandler<Object> 
             byte[] bytes = new byte[buffer.capacity()];
             buffer.readBytes(bytes);
             Object object = FSTUtil.getBinaryConf().asObject(bytes);
-            LOGGER.info("{} --> {} message: {}", remote.getPort(), WebSocketServer.SELF.getPort(), object.toString());
+            LOGGER.info("{} --> {} message: {}", remote.getPort(), WebSocketServer.SELF_ADDRESS.getPort(), object.toString());
             if (object instanceof Response) {
                 RpcClient.addResponse(((Response) object).requestId, (Response) object);
             } else if (object instanceof Request) {
-                Response response = WebSocketServer.NODE.handle((Request) object);
+                Response response = WebSocketServer.iNode.handle((Request) object);
                 if (response != null) {
                     byte[] byteArray = FSTUtil.getBinaryConf().asByteArray(response);
                     ctx.writeAndFlush(new BinaryWebSocketFrame(Unpooled.wrappedBuffer(byteArray)))

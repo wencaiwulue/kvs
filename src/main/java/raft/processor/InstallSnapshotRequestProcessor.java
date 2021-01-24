@@ -6,7 +6,7 @@ import org.slf4j.LoggerFactory;
 import raft.LogEntry;
 import raft.Node;
 import rpc.model.requestresponse.*;
-import rpc.netty.pub.RpcClient;
+import rpc.netty.RpcClient;
 import util.BackupUtil;
 import util.RetryUtil;
 

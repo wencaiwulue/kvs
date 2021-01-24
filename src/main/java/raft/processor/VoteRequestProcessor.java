@@ -27,24 +27,24 @@ public class VoteRequestProcessor implements Processor {
         node.getWriteLock().lock();
         try {
             VoteRequest request = (VoteRequest) req;
-            LOGGER.error("{} --> {}, vote request info: {}", request.getCandidateId().getSocketAddress().getPort(), node.getAddress().getSocketAddress().getPort(), request);
-            int i = Long.compare(request.getTerm(), node.currentTerm);
-            int j = Long.compare(request.getLastLogTerm(), node.logdb.lastLogTerm);
+            LOGGER.error("{} --> {}, vote request info: {}", request.getCandidateId().getSocketAddress().getPort(), node.getLocalAddress().getSocketAddress().getPort(), request);
+            int i = Long.compare(request.getTerm(), node.getCurrentTerm());
+            int j = Long.compare(request.getLastLogTerm(), node.getLogdb().getLastLogTerm());
             if (j == 0) {
-                j = Long.compare(request.getLastLogIndex(), node.logdb.lastLogIndex);
+                j = Long.compare(request.getLastLogIndex(), node.getLogdb().getLastLogIndex());
             }
 
             // if request term is bigger than current node term
             // or
             // this term don't vote for anyone
-            if (i > 0 || (j >= 0 && node.lastVoteFor == null)) {
-                node.lastVoteFor = request.getCandidateId();
-                node.currentTerm = request.getTerm();
-                node.role = Role.FOLLOWER;
-                node.leaderAddress = null;
+            if (i > 0 || (j >= 0 && node.getLastVoteFor() == null)) {
+                node.setLastVoteFor(request.getCandidateId());
+                node.setCurrentTerm(request.getTerm());
+                node.setRole(Role.FOLLOWER);
+                node.setLeaderAddress(null);
                 return new VoteResponse(request.getTerm(), true);
             } else {
-                return new VoteResponse(node.currentTerm, false);
+                return new VoteResponse(node.getCurrentTerm(), false);
             }
         } finally {
             node.getWriteLock().unlock();

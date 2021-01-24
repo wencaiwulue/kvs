@@ -8,7 +8,7 @@ import raft.Node;
 import raft.NodeAddress;
 import raft.enums.CURDOperation;
 import rpc.model.requestresponse.*;
-import rpc.netty.pub.RpcClient;
+import rpc.netty.RpcClient;
 
 import java.util.Collections;
 import java.util.List;
@@ -33,42 +33,44 @@ public class CURDProcessor implements Processor {
         CURDKVRequest request = (CURDKVRequest) req;
 
         if (CURDOperation.get.equals(request.getOperation())) { // if it's get operation, get data and return
-            Object val = node.db.get(request.getKey());
+            Object val = node.getDb().get(request.getKey());
             return new CURDResponse(true, val);
         }
 
-        node.writeLock.lock();
+        node.getWriteLock().lock();
         try {
             if (!node.isLeader()) {
-                return RpcClient.doRequest(node.leaderAddress, req); // redirect to leader
+                return RpcClient.doRequest(node.getLeaderAddress(), req); // redirect to leader
             }
 
-            List<LogEntry> logEntries = Collections.singletonList(new LogEntry(-1, node.currentTerm, request.getOperation(), request.getKey(), request.getValue()));
+            List<LogEntry> logEntries = Collections.singletonList(new LogEntry(-1, node.getCurrentTerm(), request.getOperation(), request.getKey(), request.getValue()));
             for (LogEntry log : logEntries) {
-                log.index = ++node.logdb.lastLogIndex;
+                int newValue = node.getLogdb().getLastLogIndex() + 1;
+                node.getLogdb().setLastLogIndex(newValue);
+                log.setIndex(newValue);
             }
 
             AtomicInteger ai = new AtomicInteger(0);
             for (NodeAddress peerAddress : node.allNodeAddressExcludeMe()) {
-                AppendEntriesResponse res = (AppendEntriesResponse) RpcClient.doRequest(peerAddress, new AppendEntriesRequest(logEntries, node.address, node.currentTerm, node.getLastAppliedIndex().intValue(), node.getLastAppliedTerm(), node.committedIndex));
+                AppendEntriesResponse res = (AppendEntriesResponse) RpcClient.doRequest(peerAddress, new AppendEntriesRequest(logEntries, node.getLocalAddress(), node.getCurrentTerm(), node.getLastAppliedIndex().intValue(), node.getLastAppliedTerm(), node.getCommittedIndex()));
                 if (res != null) {
                     if (res.isSuccess()) {
                         ai.addAndGet(1);
-                    } else if (res.getTerm() > node.currentTerm) {// receive term is bigger than myself, change to follower, discard current request
-                        node.leaderAddress = null;
-                        node.currentTerm = res.getTerm();
-                        node.lastVoteFor = null;
+                    } else if (res.getTerm() > node.getCurrentTerm()) {// receive term is bigger than myself, change to follower, discard current request
+                        node.setLeaderAddress(null);
+                        node.setCurrentTerm(res.getTerm());
+                        node.setLastVoteFor(null);
                     }
                 }
             }
 
-            if (ai.get() >= node.allNodeAddresses.size() / 2D) { // more than half peer already write to log
+            if (ai.get() >= node.getAllNodeAddresses().size() / 2D) { // more than half peer already write to log
                 StateMachine.apply(logEntries, node);
                 return new CURDResponse(true, request.getValue());
             }
             return new CURDResponse(false, null);
         } finally {
-            node.writeLock.unlock();
+            node.getWriteLock().unlock();
         }
     }
 }

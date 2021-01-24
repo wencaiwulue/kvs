@@ -1,4 +1,4 @@
-package rpc.netty.pub;
+package rpc.netty;
 
 import com.google.common.collect.ImmutableMap;
 import io.netty.buffer.Unpooled;
