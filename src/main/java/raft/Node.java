@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Consumer;
 
 /**
  * @author naison
@@ -125,26 +126,29 @@ public class Node implements INode {
             // if current node role is leader, then needs to send heartbeat to other, tell them i am boss, i rule anything !!!
             if (isLeader()) {
                 for (NodeAddress remote : this.allNodeAddressExcludeMe()) {
-                    Response response = RpcClient.doRequest(remote, new AppendEntriesRequest(Collections.emptyList(), this.localAddress, this.currentTerm, this.lastAppliedTerm, this.lastAppliedIndex.intValue(), this.committedIndex));
-                    // install snapshot
-                    if (response instanceof ErrorResponse) {// todo 这里约定的是如果心跳包回复ErrorResponse, 说明是out的节点，需要安装更新
-                        long size = 0;
-                        try {
-                            // todo 这里需要根据index确定是哪一个文件，并且index要做到全局递增，这个怎么办？
-                            size = FileChannel.open(this.logdb.getFile().get(0).toPath(), StandardOpenOption.READ).size();
-                        } catch (ClosedChannelException e) {
-                            LOGGER.error("who close the channel ?!!!");
-                        } catch (IOException e) {
-                            LOGGER.error(e.getMessage());
+                    Consumer<Response> consumer = response -> {
+                        // install snapshot
+                        if (response instanceof ErrorResponse) {// todo 这里约定的是如果心跳包回复ErrorResponse, 说明是out的节点，需要安装更新
+                            long size = 0;
+                            try {
+                                // todo 这里需要根据index确定是哪一个文件，并且index要做到全局递增，这个怎么办？
+                                size = FileChannel.open(this.logdb.getFile().get(0).toPath(), StandardOpenOption.READ).size();
+                            } catch (ClosedChannelException e) {
+                                LOGGER.error("who close the channel ?!!!");
+                            } catch (IOException e) {
+                                LOGGER.error(e.getMessage());
+                            }
+                            InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) RpcClient.doRequest(remote, new InstallSnapshotRequest(this.localAddress, this.currentTerm, this.logdb.getDir().toString(), size));
+                            if (snapshotResponse == null || !snapshotResponse.isSuccess()) {
+                                LOGGER.error("Install snapshot error, should retry?");
+                            }
                         }
-                        InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) RpcClient.doRequest(remote, new InstallSnapshotRequest(this.localAddress, this.currentTerm, this.logdb.getDir().toString(), size));
-                        if (snapshotResponse == null || !snapshotResponse.isSuccess()) {
-                            LOGGER.error("Install snapshot error, should retry?");
+                        if (response != null) {
+                            LOGGER.error("{} --> {}, receive heartbeat response", remote.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort());
                         }
-                    }
-                    if (response != null) {
-                        LOGGER.error("{} --> {}, receive heartbeat response", remote.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort());
-                    }
+                    };
+                    AppendEntriesRequest request = new AppendEntriesRequest(Collections.emptyList(), this.localAddress, this.currentTerm, this.lastAppliedTerm, this.lastAppliedIndex.intValue(), this.committedIndex);
+                    RpcClient.doRequestAsync(remote, request, consumer);
                 }
                 this.nextElectTime = this.nextElectTime();
                 this.nextHeartbeatTime = System.currentTimeMillis() + Config.HEARTBEAT_RATE.toMillis();
@@ -171,13 +175,13 @@ public class Node implements INode {
             AtomicInteger ticket = new AtomicInteger(1);//先给自己投一票
             AtomicBoolean fail = new AtomicBoolean(false);
             CountDownLatch latch = new CountDownLatch(this.allNodeAddressExcludeMe().size());
-            Future<?>[] futures = new Future[this.allNodeAddressExcludeMe().size()];
+            Integer[] requestIds = new Integer[this.allNodeAddressExcludeMe().size()];
             int index = 0;
             for (NodeAddress addr : this.allNodeAddressExcludeMe()) {
-                Runnable r = () -> {
+                Consumer<Response> consumer = res -> {
                     try {
-                        VoteResponse response = (VoteResponse) RpcClient.doRequest(addr, new VoteRequest(this.localAddress, this.currentTerm, this.logdb.getLastLogIndex(), this.logdb.getLastLogTerm()));
-                        if (response != null) {
+                        if (res != null) {
+                            VoteResponse response = (VoteResponse) res;
                             LOGGER.error("{} --> {}, vote response: {}", addr.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort(), response.toString());
                             if (this.role.equals(Role.CANDIDATE) && response.isGrant() && response.getTerm() == this.currentTerm) {
                                 ticket.incrementAndGet();
@@ -195,23 +199,27 @@ public class Node implements INode {
                         latch.countDown();
                     }
                 };
-                futures[index++] = ThreadUtil.getThreadPool().submit(r);
+                VoteRequest voteRequest = new VoteRequest(this.localAddress, this.currentTerm, this.logdb.getLastLogIndex(), this.logdb.getLastLogTerm());
+                requestIds[index++] = voteRequest.getRequestId();
+                RpcClient.doRequestAsync(addr, voteRequest, consumer);
             }
             try {
                 boolean success = latch.await(Config.ELECT_RATE.toMillis(), TimeUnit.MILLISECONDS);
                 if (!success) {
                     // should i to waiting for other node's response or not ?
+                    AtomicBoolean mayInterruptIfRunning = new AtomicBoolean(true);
                     if (ticket.getAcquire() > 1) {
+                        mayInterruptIfRunning.set(false);
                     }
-                    Arrays.stream(futures).forEach(e -> e.cancel(true));
+                    Arrays.stream(requestIds).forEach(e -> RpcClient.cancelRequest(e, mayInterruptIfRunning.get()));
                     LOGGER.error("elect timeout, cancel all task");
                 }
             } catch (InterruptedException exception) {
-                Arrays.stream(futures).forEach(e -> e.cancel(true));
+                Arrays.stream(requestIds).forEach(e -> RpcClient.cancelRequest(e, true));
                 LOGGER.error("elect interrupted, cancel all task");
             }
             if (fail.getAcquire()) {
-                Arrays.stream(futures).forEach(e -> e.cancel(true));
+                Arrays.stream(requestIds).forEach(e -> RpcClient.cancelRequest(e, true));
                 LOGGER.error("Elect failed, cancel all task");
             }
             int mostTicketNum = BigDecimal.valueOf(this.allNodeAddresses.size() / 2D).setScale(0, RoundingMode.UP).intValue();
@@ -251,7 +259,7 @@ public class Node implements INode {
         }
 
         if (response != null) {
-            response.requestId = request.requestId;
+            response.setRequestId(request.getRequestId());
         }
         return response;
     }

@@ -41,7 +41,7 @@ public class RemovePeerRequestProcessor implements Processor {
             // each node receive leader command, will ask the remove peer to remove itself
             request.sender = node.getLeaderAddress();
             for (NodeAddress nodeAddress : node.allNodeAddressExcludeMe()) {
-                ThreadUtil.getThreadPool().execute(() -> RpcClient.doRequest(nodeAddress, request));
+                RpcClient.doRequest(nodeAddress, request);
             }
             PowerResponse response = (PowerResponse) RpcClient.doRequest(request.peer, new PowerRequest(true, true));
             if (response != null && response.isSuccess()) {

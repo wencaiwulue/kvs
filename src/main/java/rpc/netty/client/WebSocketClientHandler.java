@@ -96,7 +96,7 @@ public class WebSocketClientHandler extends SimpleChannelInboundHandler<Object> 
             Object object = FSTUtil.getBinaryConf().asObject(bytes);
             LOGGER.info("{} --> {} message: {}", remote.getPort(), WebSocketServer.SELF_ADDRESS.getPort(), object.toString());
             if (object instanceof Response) {
-                RpcClient.addResponse(((Response) object).requestId, (Response) object);
+                RpcClient.addResponse(((Response) object).getRequestId(), (Response) object);
             } else if (object instanceof Request) {
                 Response response = WebSocketServer.iNode.handle((Request) object);
                 if (response != null) {

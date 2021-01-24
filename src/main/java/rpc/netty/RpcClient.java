@@ -17,6 +17,7 @@ import util.ThreadUtil;
 import java.net.InetSocketAddress;
 import java.util.Map;
 import java.util.concurrent.*;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -27,9 +28,13 @@ public class RpcClient {
     private static final Logger LOGGER = LoggerFactory.getLogger(RpcClient.class);
 
     private static final Map<InetSocketAddress, Channel> CONNECTIONS = new ConcurrentHashMap<>();
+    private static final ArrayBlockingQueue<SocketRequest> REQUEST_TASK = new ArrayBlockingQueue<>(10 * 1000 * 1000);
+    // synchronize mode
     private static final Map<Integer, Response> RESPONSE_MAP = new ConcurrentHashMap<>();
     private static final Map<Integer, CountDownLatch> RESPONSE_MAP_LOCK = new ConcurrentHashMap<>();
-    private static final ArrayBlockingQueue<SocketRequest> REQUEST_TASK = new ArrayBlockingQueue<>(10 * 1000 * 1000);
+    // asynchronize mode
+    private static final Map<Integer, Consumer<Response>> RESPONSE_CONSUMER = new ConcurrentHashMap<>();
+    private static final Map<Integer, Future<?>> RUNNING = new ConcurrentHashMap<>();
 
     static {
         ThreadUtil.getThreadPool().execute(RpcClient::writeRequest);
@@ -46,8 +51,11 @@ public class RpcClient {
     public static void addResponse(int requestId, Response response) {
         RESPONSE_MAP.put(requestId, response);
         CountDownLatch latch = RESPONSE_MAP_LOCK.remove(requestId);
+        Consumer<Response> consumer = RESPONSE_CONSUMER.remove(requestId);
         if (latch != null) {
             latch.countDown();
+        } else if (consumer != null) {
+            RUNNING.put(requestId, ThreadUtil.getThreadPool().submit(() -> consumer.accept(response)));
         }
     }
 
@@ -70,7 +78,31 @@ public class RpcClient {
         return CONNECTIONS.get(remoteAddress);
     }
 
-    public static Response doRequest(NodeAddress remoteAddress, final Request request) {
+    // todo delete request from request queue
+    public static void cancelRequest(int requestId, boolean mayInterruptIfRunning) {
+        Consumer<Response> consumer = RESPONSE_CONSUMER.remove(requestId);
+        Future<?> remove = RUNNING.remove(requestId);
+        if (remove != null) {
+            if (!remove.isDone() && !remove.isCancelled()) {
+                remove.cancel(mayInterruptIfRunning);
+            }
+        }
+    }
+
+    public static void doRequestAsync(NodeAddress remoteAddress, Request request, Consumer<Response> nextTodo) {
+        if (remoteAddress == null) {
+            return;
+        }
+        SocketRequest socketRequest = new SocketRequest(remoteAddress.getSocketAddress(), request);
+        try {
+            REQUEST_TASK.put(socketRequest);
+            RESPONSE_CONSUMER.put(request.getRequestId(), nextTodo);
+        } catch (InterruptedException e) {
+            LOGGER.error("add async request error, info: {}", e.getMessage());
+        }
+    }
+
+    public static Response doRequest(NodeAddress remoteAddress, Request request) {
         return doRequest(remoteAddress.getSocketAddress(), request);
     }
 
@@ -83,9 +115,9 @@ public class RpcClient {
         SocketRequest socketRequest = new SocketRequest(remoteAddress, request);
         try {
             REQUEST_TASK.put(socketRequest);
-            RESPONSE_MAP_LOCK.put(request.requestId, latch);
+            RESPONSE_MAP_LOCK.put(request.getRequestId(), latch);
         } catch (InterruptedException e) {
-            LOGGER.error(e.getMessage());
+            LOGGER.error("add sync request error, info: {}", e.getMessage());
         }
 
         try {
@@ -98,7 +130,7 @@ public class RpcClient {
             socketRequest.cancelled = true;
             return null;
         }
-        return RESPONSE_MAP.remove(request.requestId);
+        return RESPONSE_MAP.remove(request.getRequestId());
     }
 
     private static void writeRequest() {
