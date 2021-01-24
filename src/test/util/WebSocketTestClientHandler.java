@@ -92,11 +92,11 @@ public class WebSocketTestClientHandler extends SimpleChannelInboundHandler<Obje
             byte[] bytes = new byte[buffer.capacity()];
             buffer.readBytes(bytes);
             Object object = FSTUtil.getBinaryConf().asObject(bytes);
-            LOGGER.info("{} --> {} message: {}", remote.getPort(), WebSocketServer.SELF_ADDRESS.getPort(), object.toString());
+            LOGGER.info("{} --> {} message: {}", remote.getPort(), WebSocketServer.LOCAL_ADDRESS.getPort(), object.toString());
             if (object instanceof Response) {
-                LOGGER.info("{} --> {} message: {}", remote.getPort(), WebSocketServer.SELF_ADDRESS.getPort(), object.toString());
+                LOGGER.info("{} --> {} message: {}", remote.getPort(), WebSocketServer.LOCAL_ADDRESS.getPort(), object.toString());
             } else if (object instanceof Request) {
-                LOGGER.warn("test client don't need to receive request");
+                LOGGER.warn("Test client don't need to receive request");
                 ctx.close();
             }
         }

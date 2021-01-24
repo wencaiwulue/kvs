@@ -18,31 +18,29 @@ import java.net.InetSocketAddress;
 import java.security.cert.CertificateException;
 
 public final class WebSocketServer {
-    public static final Logger LOGGER = LoggerFactory.getLogger(WebSocketServer.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(WebSocketServer.class);
 
-    private static final int PORT = Integer.parseInt(System.getenv("port"));
-    public static final InetSocketAddress SELF_ADDRESS = new InetSocketAddress("127.0.0.1", PORT);
-    public static INode iNode;
+    public static final InetSocketAddress LOCAL_ADDRESS = new InetSocketAddress("127.0.0.1", Integer.parseInt(System.getenv("port")));
+    public static INode node;
 
-    public static void main(INode node) {
-        iNode = node;
+    public static void main(INode iNode) {
+        node = iNode;
 
         EventLoopGroup bossGroup = new NioEventLoopGroup(1);
         EventLoopGroup workerGroup = new NioEventLoopGroup();
         try {
             // Configure SSL.
             SelfSignedCertificate ssc = new SelfSignedCertificate();
-            final SslContext sslCtx = SslContextBuilder.forServer(ssc.certificate(), ssc.privateKey()).build();
+            SslContext sslCtx = SslContextBuilder.forServer(ssc.certificate(), ssc.privateKey()).build();
             ServerBootstrap bootstrap = new ServerBootstrap();
-            bootstrap
-                    .group(bossGroup, workerGroup)
+            bootstrap.group(bossGroup, workerGroup)
                     .channel(NioServerSocketChannel.class)
                     .childHandler(new WebSocketServerInitializer(sslCtx));
 
-            Channel ch = bootstrap.bind(PORT).sync().channel();
-            LOGGER.info("Server started on port(s): {} (websocket)", PORT);
-            ThreadUtil.getThreadPool().execute(node);
-            ch.closeFuture().sync();
+            Channel channel = bootstrap.bind(LOCAL_ADDRESS.getPort()).sync().channel();
+            LOGGER.info("Server started on port(s): {} (websocket)", LOCAL_ADDRESS.getPort());
+            ThreadUtil.getThreadPool().execute(iNode);
+            channel.closeFuture().sync();
         } catch (CertificateException | InterruptedException | SSLException e) {
             LOGGER.error(e.getMessage());
         } finally {

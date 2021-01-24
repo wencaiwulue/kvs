@@ -46,14 +46,14 @@ public class WebSocketServerHandler extends SimpleChannelInboundHandler<Object> 
         remoteAddress = new InetSocketAddress(localhost, localport);
         // Handshake
         String uri = "wss://" + req.headers().get(HttpHeaderNames.HOST) + Constant.WEBSOCKET_PATH;
-        WebSocketServerHandshakerFactory wsFactory = new WebSocketServerHandshakerFactory(uri, "diy-protocol", true, 5 * 1024 * 1024);
+        WebSocketServerHandshakerFactory wsFactory = new WebSocketServerHandshakerFactory(uri, Constant.WEBSOCKET_PROTOCOL, true, 5 * 1024 * 1024);
         handShaker = wsFactory.newHandshaker(req);
         if (handShaker == null) {
             WebSocketServerHandshakerFactory.sendUnsupportedVersionResponse(ctx.channel());
         } else {
             handShaker.handshake(ctx.channel(), req);
             RpcClient.addConnection(remoteAddress, ctx.channel());
-            LOGGER.info("{} --> {} create a socket connection", localport, WebSocketServer.SELF_ADDRESS.getPort());
+            LOGGER.info("{} --> {} create a socket connection", localport, WebSocketServer.LOCAL_ADDRESS.getPort());
         }
     }
 
@@ -77,19 +77,17 @@ public class WebSocketServerHandler extends SimpleChannelInboundHandler<Object> 
                 LOGGER.warn("object is null");
                 return;
             }
-            LOGGER.info("{} --> {} message: {}", remoteAddress.getPort(), WebSocketServer.SELF_ADDRESS.getPort(), object.toString());
+            LOGGER.info("{} --> {} message: {}", remoteAddress.getPort(), WebSocketServer.LOCAL_ADDRESS.getPort(), object.toString());
             if (object instanceof Response) {
                 RpcClient.addResponse(((Response) object).getRequestId(), (Response) object);
             } else if (object instanceof Request) {
-                Response response = WebSocketServer.iNode.handle((Request) object);
-                LOGGER.info("{} --> {} message: {}", remoteAddress.getPort(), WebSocketServer.SELF_ADDRESS.getPort(), object.toString());
+                Response response = WebSocketServer.node.handle((Request) object);
+                LOGGER.info("{} --> {} message: {}", remoteAddress.getPort(), WebSocketServer.LOCAL_ADDRESS.getPort(), object.toString());
                 if (response != null) {
-                    LOGGER.info("{} --> {} response: {}", WebSocketServer.SELF_ADDRESS.getPort(), remoteAddress.getPort(), response.toString());
+                    LOGGER.info("{} --> {} response: {}", WebSocketServer.LOCAL_ADDRESS.getPort(), remoteAddress.getPort(), response.toString());
                     byte[] byteArray = FSTUtil.getBinaryConf().asByteArray(response);
                     ctx.writeAndFlush(new BinaryWebSocketFrame(Unpooled.wrappedBuffer(byteArray)))
                             .addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
-                } else {
-                    LOGGER.warn("Server handler, response is empty ??");
                 }
             }
         }

@@ -19,10 +19,9 @@ import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.handler.timeout.IdleStateHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import rpc.netty.config.Constant;
 import rpc.netty.server.HeartBeatHandler;
 import rpc.netty.server.WebSocketServer;
-import rpc.netty.config.Constant;
-import rpc.netty.RpcClient;
 
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -31,17 +30,18 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public final class WebSocketClient {
     private static final Logger LOGGER = LoggerFactory.getLogger(WebSocketClient.class);
-    static final EventLoopGroup EVENT_LOOP = new NioEventLoopGroup(1);
 
-    public static void doConnection(InetSocketAddress address) {
+    // all client connections will use one event loop, actually, can use WebSocketServer.java's bossGroup, but for performance, use singe one
+    private static final EventLoopGroup EVENT_LOOP = new NioEventLoopGroup(1);
+
+    public static Channel doConnection(InetSocketAddress address) {
         try {
-            URI uri = new URI("wss", null, address.getHostName(), address.getPort(), "/", null, null);
+            URI uri = new URI("wss", null, address.getHostName(), address.getPort(), Constant.WEBSOCKET_PATH, null, null);
             SslContext sslCtx = SslContextBuilder.forClient().trustManager(InsecureTrustManagerFactory.INSTANCE).build();
 
-            AtomicReference<WebSocketClientHandler> ref = new AtomicReference<>();
+            AtomicReference<WebSocketClientHandler> clientHandlerReference = new AtomicReference<>();
             Bootstrap bootstrap = new Bootstrap();
-            bootstrap
-                    .group(EVENT_LOOP)
+            bootstrap.group(EVENT_LOOP)
                     .channel(NioSocketChannel.class)
                     .handler(
                             new ChannelInitializer<SocketChannel>() {
@@ -57,19 +57,20 @@ public final class WebSocketClient {
                                     pipeline.addLast(new IdleStateHandler(2, 3, 5, TimeUnit.SECONDS));
                                     pipeline.addLast(new HeartBeatHandler());
                                     DefaultHttpHeaders headers = new DefaultHttpHeaders();
-                                    headers.add(Constant.LOCALHOST, WebSocketServer.SELF_ADDRESS.getHostName());
-                                    headers.add(Constant.LOCALPORT, WebSocketServer.SELF_ADDRESS.getPort());
-                                    WebSocketClientHandshaker handshake = WebSocketClientHandshakerFactory.newHandshaker(uri, WebSocketVersion.V13, "diy-protocol", true, headers);
-                                    ref.set(new WebSocketClientHandler(handshake, address));
-                                    pipeline.addLast(ref.get());
+                                    // tell remote server, who am i
+                                    headers.add(Constant.LOCALHOST, WebSocketServer.LOCAL_ADDRESS.getHostName());
+                                    headers.add(Constant.LOCALPORT, WebSocketServer.LOCAL_ADDRESS.getPort());
+                                    WebSocketClientHandshaker handshake = WebSocketClientHandshakerFactory.newHandshaker(uri, WebSocketVersion.V13, Constant.WEBSOCKET_PROTOCOL, true, headers);
+                                    clientHandlerReference.set(new WebSocketClientHandler(handshake, address));
+                                    pipeline.addLast(clientHandlerReference.get());
                                 }
                             });
-
             Channel channel = bootstrap.connect(uri.getHost(), uri.getPort()).sync().channel();
-            ref.get().getHandshakeFuture().sync();
-            RpcClient.addConnection(address, channel);
+            clientHandlerReference.get().getHandshakeFuture().sync();
+            return channel;
         } catch (Exception e) {
             LOGGER.error("Server {} is unhealthily, please check the machine status", address.getPort());
+            return null;
         }
     }
 }

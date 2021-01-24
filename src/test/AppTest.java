@@ -17,6 +17,7 @@ class AppTest {
     private static final InetSocketAddress p8002 = new InetSocketAddress("localhost", 8002);
     private static final InetSocketAddress p8003 = new InetSocketAddress("localhost", 8003);
     private static final InetSocketAddress p8004 = new InetSocketAddress("localhost", 8004);
+    private static final InetSocketAddress p8005 = new InetSocketAddress("localhost", 8005);
 
     @Test
     void addPeer1And2And3() throws Exception {
@@ -34,6 +35,16 @@ class AppTest {
     @Test
     void addPeer3() throws Exception {
         NettyClientTest.main(p8002, new AddPeerRequest(new NodeAddress(p8003)));
+    }
+
+    @Test
+    void addPeer4() throws Exception {
+        NettyClientTest.main(p8002, new AddPeerRequest(new NodeAddress(p8004)));
+    }
+
+    @Test
+    void addPeer5() throws Exception {
+        NettyClientTest.main(p8001, new AddPeerRequest(new NodeAddress(p8005)));
     }
 
     @Test

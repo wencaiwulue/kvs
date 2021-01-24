@@ -5,6 +5,9 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.handler.codec.http.websocketx.BinaryWebSocketFrame;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import raft.NodeAddress;
@@ -27,7 +30,9 @@ import java.util.function.Supplier;
 public class RpcClient {
     private static final Logger LOGGER = LoggerFactory.getLogger(RpcClient.class);
 
+    // hold all connections
     private static final Map<InetSocketAddress, Channel> CONNECTIONS = new ConcurrentHashMap<>();
+    // the request needs to write out
     private static final ArrayBlockingQueue<SocketRequest> REQUEST_TASK = new ArrayBlockingQueue<>(10 * 1000 * 1000);
     // synchronize mode
     private static final Map<Integer, Response> RESPONSE_MAP = new ConcurrentHashMap<>();
@@ -71,7 +76,10 @@ public class RpcClient {
         if (supplier.get()) {
             synchronized (remoteAddress.toString().intern()) {
                 if (supplier.get()) {
-                    WebSocketClient.doConnection(remoteAddress);
+                    Channel channel = WebSocketClient.doConnection(remoteAddress);
+                    if (channel != null) {
+                        RpcClient.addConnection(remoteAddress, channel);
+                    }
                 }
             }
         }
@@ -117,12 +125,12 @@ public class RpcClient {
             REQUEST_TASK.put(socketRequest);
             RESPONSE_MAP_LOCK.put(request.getRequestId(), latch);
         } catch (InterruptedException e) {
-            LOGGER.error("add sync request error, info: {}", e.getMessage());
+            LOGGER.error("Add sync request error, info: {}", e.getMessage());
         }
 
         try {
-            boolean a = latch.await(300, TimeUnit.MILLISECONDS);
-            if (!a) {
+            boolean success = latch.await(300, TimeUnit.MILLISECONDS);
+            if (!success) {
                 socketRequest.cancelled = true;
                 return null;
             }
@@ -155,10 +163,16 @@ public class RpcClient {
                         break;
                     }
                 }
+                if (!success) {
+                    LOGGER.error("Write out request error, already retry three times, should retry or not ? request info: {}", socketRequest);
+                }
             }
         }
     }
 
+    @Getter
+    @Setter
+    @ToString
     private static class SocketRequest {
         public InetSocketAddress address;
         public Request request;

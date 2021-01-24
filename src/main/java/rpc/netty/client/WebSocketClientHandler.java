@@ -94,17 +94,15 @@ public class WebSocketClientHandler extends SimpleChannelInboundHandler<Object> 
             byte[] bytes = new byte[buffer.capacity()];
             buffer.readBytes(bytes);
             Object object = FSTUtil.getBinaryConf().asObject(bytes);
-            LOGGER.info("{} --> {} message: {}", remote.getPort(), WebSocketServer.SELF_ADDRESS.getPort(), object.toString());
+            LOGGER.info("{} --> {} message: {}", remote.getPort(), WebSocketServer.LOCAL_ADDRESS.getPort(), object.toString());
             if (object instanceof Response) {
                 RpcClient.addResponse(((Response) object).getRequestId(), (Response) object);
             } else if (object instanceof Request) {
-                Response response = WebSocketServer.iNode.handle((Request) object);
+                Response response = WebSocketServer.node.handle((Request) object);
                 if (response != null) {
                     byte[] byteArray = FSTUtil.getBinaryConf().asByteArray(response);
                     ctx.writeAndFlush(new BinaryWebSocketFrame(Unpooled.wrappedBuffer(byteArray)))
                             .addListeners(ChannelFutureListener.CLOSE_ON_FAILURE);
-                } else {
-                    LOGGER.warn("client handler, response is empty ?");
                 }
             }
         }

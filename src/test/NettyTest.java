@@ -15,6 +15,7 @@ import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import rpc.model.requestresponse.AddPeerRequest;
 import rpc.model.requestresponse.Request;
 import rpc.netty.client.WebSocketClientHandler;
+import rpc.netty.config.Constant;
 import util.FSTUtil;
 
 import java.io.BufferedReader;
@@ -36,7 +37,7 @@ public class NettyTest {
             DefaultHttpHeaders httpHeaders = new DefaultHttpHeaders();
             httpHeaders.add("localhost", "127.0.0.1");
             httpHeaders.add("localport", 8445);
-            WebSocketClientHandshaker handshake = WebSocketClientHandshakerFactory.newHandshaker(uri, WebSocketVersion.V13, "diy-protocol", true, httpHeaders);
+            WebSocketClientHandshaker handshake = WebSocketClientHandshakerFactory.newHandshaker(uri, WebSocketVersion.V13, Constant.WEBSOCKET_PROTOCOL, true, httpHeaders);
             WebSocketClientHandler handler = new WebSocketClientHandler(handshake, new InetSocketAddress(uri.getHost(), uri.getPort()));
 
             Bootstrap bootstrap = new Bootstrap();
