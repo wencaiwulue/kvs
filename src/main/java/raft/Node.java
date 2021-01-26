@@ -16,14 +16,11 @@ import rpc.netty.RpcClient;
 import util.ThreadUtil;
 
 import java.io.IOException;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.FileChannel;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Future;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -222,7 +219,7 @@ public class Node implements INode {
                 Arrays.stream(requestIds).forEach(e -> RpcClient.cancelRequest(e, true));
                 LOGGER.error("Elect failed, cancel all task");
             }
-            int mostTicketNum = BigDecimal.valueOf(this.allNodeAddresses.size() / 2D).setScale(0, RoundingMode.UP).intValue();
+            int mostTicketNum = (this.allNodeAddresses.size() / 2) + 1;
             if (ticket.getAcquire() >= mostTicketNum) {
                 LOGGER.info("Elect successfully，leader info: {}", this.localAddress);
                 this.currentTerm = this.currentTerm + 1;
