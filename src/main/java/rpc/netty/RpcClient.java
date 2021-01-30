@@ -164,7 +164,7 @@ public class RpcClient {
                     }
                 }
                 if (!success) {
-                    LOGGER.error("Write out request error, already retry three times, should retry or not ? request info: {}", socketRequest);
+                    LOGGER.warn("Write out request error, already retry three times, should retry or not ? request info: {}", socketRequest);
                 }
             }
         }

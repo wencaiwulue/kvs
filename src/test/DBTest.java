@@ -1,4 +1,4 @@
-import db.core.Config;
+import db.config.Config;
 import db.core.DB;
 import db.core.ExpireKey;
 import org.junit.jupiter.api.Test;

@@ -2,6 +2,7 @@ package db.core;
 
 import com.google.common.hash.BloomFilter;
 import com.google.common.hash.Funnels;
+import db.config.Config;
 import db.core.storage.MapStorage;
 import db.core.storage.StorageEngine;
 import org.slf4j.Logger;

@@ -7,7 +7,6 @@ import raft.LogEntry;
 import raft.Node;
 import raft.enums.Role;
 import rpc.model.requestresponse.*;
-import rpc.netty.server.WebSocketServer;
 import util.ThreadUtil;
 
 /**
@@ -29,7 +28,7 @@ public class AppendEntriesRequestProcessor implements Processor {
             // push off elect
             node.setNextElectTime(node.nextElectTime());
             AppendEntriesRequest request = (AppendEntriesRequest) req;
-            LOGGER.error("{} --> {}, receive heartbeat, term: {}", request.getLeaderId().getSocketAddress().getPort(), node.getLocalAddress().getSocketAddress().getPort(), request.getTerm());
+            LOGGER.info("{} --> {}, receive heartbeat, term: {}", request.getLeaderId().getSocketAddress().getPort(), node.getLocalAddress().getSocketAddress().getPort(), request.getTerm());
             if (request.getTerm() < node.getCurrentTerm()) {
                 // start elect, because leader term is less than current nodes term
                 node.setNextElectTime(-1);

@@ -1,7 +1,7 @@
 package raft;
 
 import com.google.common.collect.Sets;
-import db.core.Config;
+import db.config.Config;
 import db.core.DB;
 import db.core.LogDB;
 import lombok.Getter;
@@ -9,6 +9,7 @@ import lombok.Setter;
 import lombok.ToString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import raft.config.Constant;
 import raft.enums.Role;
 import raft.processor.Processor;
 import rpc.model.requestresponse.*;
@@ -53,7 +54,7 @@ public class Node implements INode {
     // default role is follower
     private Role role = Role.FOLLOWER;
 
-    private volatile long committedIndex;
+    private volatile long committedIndex = 0;
     private AtomicLong lastAppliedIndex = new AtomicLong(0);
     private volatile int lastAppliedTerm = 0;
     private volatile long nextIndex;
@@ -109,7 +110,7 @@ public class Node implements INode {
 
             this.elect();
         };
-        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(this.electTask, 0, Config.ELECT_RATE.toMillis(), TimeUnit.MILLISECONDS);
+        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(this.electTask, 0, Constant.ELECT_RATE.toMillis(), TimeUnit.MILLISECONDS);
 
         this.heartbeatTask = () -> {
             if (!this.start) {
@@ -141,18 +142,18 @@ public class Node implements INode {
                             }
                         }
                         if (response != null) {
-                            LOGGER.error("{} --> {}, receive heartbeat response", remote.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort());
+                            LOGGER.info("{} --> {}, receive heartbeat response", remote.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort());
                         }
                     };
                     AppendEntriesRequest request = new AppendEntriesRequest(Collections.emptyList(), this.localAddress, this.currentTerm, this.lastAppliedTerm, this.lastAppliedIndex.intValue(), this.committedIndex);
                     RpcClient.doRequestAsync(remote, request, consumer);
                 }
                 this.nextElectTime = this.nextElectTime();
-                this.nextHeartbeatTime = System.currentTimeMillis() + Config.HEARTBEAT_RATE.toMillis();
+                this.nextHeartbeatTime = System.currentTimeMillis() + Constant.HEARTBEAT_RATE.toMillis();
                 LOGGER.info("Delay elect successfully");
             }
         };
-        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(this.heartbeatTask, 0, Config.HEARTBEAT_RATE.toMillis(), TimeUnit.MILLISECONDS);
+        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(this.heartbeatTask, 0, Constant.HEARTBEAT_RATE.toMillis(), TimeUnit.MILLISECONDS);
         this.start = true;
     }
 
@@ -179,7 +180,7 @@ public class Node implements INode {
                     try {
                         if (res != null) {
                             VoteResponse response = (VoteResponse) res;
-                            LOGGER.error("{} --> {}, vote response: {}", addr.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort(), response.toString());
+                            LOGGER.info("{} --> {}, vote response: {}", addr.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort(), response.toString());
                             if (this.role.equals(Role.CANDIDATE) && response.isGrant() && response.getTerm() == this.currentTerm) {
                                 ticket.incrementAndGet();
                             } else if (response.getTerm() > this.currentTerm) {
@@ -201,7 +202,7 @@ public class Node implements INode {
                 RpcClient.doRequestAsync(addr, voteRequest, consumer);
             }
             try {
-                boolean success = latch.await(Config.ELECT_RATE.toMillis(), TimeUnit.MILLISECONDS);
+                boolean success = latch.await(Constant.ELECT_RATE.toMillis(), TimeUnit.MILLISECONDS);
                 if (!success) {
                     // should i to waiting for other node's response or not ?
                     AtomicBoolean mayInterruptIfRunning = new AtomicBoolean(true);
@@ -273,7 +274,7 @@ public class Node implements INode {
 
     // randomize 0-100ms, avoid two nodes elect at the same
     public long nextElectTime() {
-        return System.currentTimeMillis() + Config.ELECT_RATE.toMillis() + ThreadLocalRandom.current().nextInt(100);
+        return System.currentTimeMillis() + Constant.ELECT_RATE.toMillis() + ThreadLocalRandom.current().nextInt(100);
     }
 
 }

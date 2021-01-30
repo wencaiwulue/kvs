@@ -3,7 +3,7 @@ package util;
 
 import com.esotericsoftware.kryo.KryoException;
 import db.core.CacheBuffer;
-import db.core.Config;
+import db.config.Config;
 import db.core.storage.StorageEngine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
