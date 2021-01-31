@@ -223,7 +223,6 @@ public class Node implements INode {
             int mostTicketNum = (this.allNodeAddresses.size() / 2) + 1;
             if (ticket.getAcquire() >= mostTicketNum) {
                 LOGGER.info("Elect successfully，leader info: {}", this.localAddress);
-                this.currentTerm = this.currentTerm + 1;
                 this.leaderAddress = this.localAddress;
                 this.role = Role.LEADER;
                 this.nextHeartbeatTime = -1;

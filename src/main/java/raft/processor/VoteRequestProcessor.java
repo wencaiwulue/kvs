@@ -37,7 +37,7 @@ public class VoteRequestProcessor implements Processor {
             // if request term is bigger than current node term
             // or
             // this term don't vote for anyone
-            if (i > 0 || (j >= 0 && node.getLastVoteFor() == null)) {
+            if (i > 0 || (i == 0 && node.getLastVoteFor() == null)) {
                 node.setLastVoteFor(request.getCandidateId());
                 node.setCurrentTerm(request.getTerm());
                 node.setRole(Role.FOLLOWER);

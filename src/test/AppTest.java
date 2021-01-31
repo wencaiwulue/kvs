@@ -49,7 +49,7 @@ class AppTest {
 
     @Test
     void removePeer1() throws Exception {
-        NettyClientTest.main(p8002, new RemovePeerRequest(new NodeAddress(p8001)));
+        NettyClientTest.main(p8001, new RemovePeerRequest(new NodeAddress(p8001)));
     }
 
     @Test

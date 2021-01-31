@@ -7,7 +7,7 @@ import raft.LogEntry;
 import raft.Node;
 import raft.enums.Role;
 import rpc.model.requestresponse.*;
-import util.ThreadUtil;
+import util.CollectionUtil;
 
 /**
  * @author naison
@@ -28,37 +28,41 @@ public class AppendEntriesRequestProcessor implements Processor {
             // push off elect
             node.setNextElectTime(node.nextElectTime());
             AppendEntriesRequest request = (AppendEntriesRequest) req;
-            LOGGER.info("{} --> {}, receive heartbeat, term: {}", request.getLeaderId().getSocketAddress().getPort(), node.getLocalAddress().getSocketAddress().getPort(), request.getTerm());
-            if (request.getTerm() < node.getCurrentTerm()) {
-                // start elect, because leader term is less than current nodes term
-                node.setNextElectTime(-1);
-                node.setRole(Role.CANDIDATE);
-                return new AppendEntriesResponse(node.getCurrentTerm(), false, node.getLogdb().getLastLogIndex());
-            } else if (request.getTerm() > node.getCurrentTerm()) {
-                node.setCurrentTerm(request.getTerm());
-                node.setLeaderAddress(request.getLeaderId());
-                node.setLastVoteFor(null);
-                node.setRole(Role.FOLLOWER);
-            }
-
-            if (!request.getLeaderId().equals(node.getLeaderAddress())) {
-                if (request.getTerm() + 1 > node.getCurrentTerm()) {
-                    node.setCurrentTerm(request.getTerm() + 1);
-                    node.setLeaderAddress(null);
-                    node.setLastVoteFor(null);
-                    node.setRole(Role.FOLLOWER);
-                    node.setNextElectTime(-1);// 立即重新选举
-                    ThreadUtil.getThreadPool().execute(node.getElectTask());
+            // heartbeat
+            if (CollectionUtil.isEmpty(request.getEntries())) {
+                LOGGER.info("{} --> {}, receive heartbeat, term: {}", request.getLeaderId().getSocketAddress().getPort(), node.getLocalAddress().getSocketAddress().getPort(), request.getTerm());
+                switch (node.getRole()) {
+                    case LEADER:
+                        LOGGER.error("leader receive heartbeats ??");
+                        return new AppendEntriesResponse(node.getCurrentTerm(), false, node.getLogdb().getLastLogIndex());
+                    case FOLLOWER:
+                        if (request.getTerm() < node.getCurrentTerm()) {
+                            LOGGER.error("leader term should not less than follower's term");
+                            return new AppendEntriesResponse(node.getCurrentTerm(), false, node.getLogdb().getLastLogIndex());
+                        } else if (request.getTerm() >= node.getCurrentTerm()) {
+                            node.setCurrentTerm(request.getTerm());
+                            node.setLeaderAddress(request.getLeaderId());
+                        }
+                        break;
+                    case CANDIDATE:
+                        if (request.getTerm() < node.getCurrentTerm()) {
+                            LOGGER.error("leader term should not less than candidate's term");
+                            return new AppendEntriesResponse(node.getCurrentTerm(), false, node.getLogdb().getLastLogIndex());
+                        } else if (request.getTerm() >= node.getCurrentTerm()) {
+                            node.setCurrentTerm(request.getTerm());
+                            node.setLeaderAddress(request.getLeaderId());
+                            node.setRole(Role.FOLLOWER);
+                        }
+                        break;
                 }
-                return new AppendEntriesResponse(request.getTerm() + 1, false, node.getLogdb().getLastLogIndex());
-            }
-
-            if (!request.getEntries().isEmpty()) { // otherwise it's a heartbeat
-                node.getLogdb().save(request.getEntries());
+                return new AppendEntriesResponse(node.getCurrentTerm(), true, node.getLogdb().getLastLogIndex());
             } else {
-                if (request.getCommittedIndex() > node.getCommittedIndex()) {
+                LOGGER.info("{} --> {}, receive synchronize log, term: {}", request.getLeaderId().getSocketAddress().getPort(), node.getLocalAddress().getSocketAddress().getPort(), request.getTerm());
+                if (request.getCommittedIndex() == node.getCommittedIndex()) {
+                    node.getLogdb().save(request.getEntries());
+                } else if (request.getCommittedIndex() > node.getCommittedIndex()) {
                     long size = request.getCommittedIndex() - request.getPrevLogIndex();
-                    // if out of time too much, the use InstallSnapshot to scp zip file and install
+                    // if out of time too much, then use InstallSnapshot to scp zip file and install
                     if (size < 100) {
                         for (long i = 1; i < size + 1; i++) {
                             LogEntry entry = (LogEntry) node.getLogdb().get(String.valueOf(request.getPrevLogIndex() + i));
@@ -71,9 +75,11 @@ public class AppendEntriesRequestProcessor implements Processor {
                         // install snapshot
                         return new ErrorResponse();
                     }
+                } else {
+                    LOGGER.error("this should not happened");
                 }
+                return new AppendEntriesResponse(node.getCurrentTerm(), true, node.getLogdb().getLastLogIndex());
             }
-            return new AppendEntriesResponse(node.getCurrentTerm(), true, node.getLogdb().getLastLogIndex());
         } finally {
             node.getWriteLock().unlock();
         }
