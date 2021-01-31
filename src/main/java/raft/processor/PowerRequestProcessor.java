@@ -19,8 +19,8 @@ public class PowerRequestProcessor implements Processor {
     @Override
     public Response process(Request req, Node node) {
         PowerRequest request = (PowerRequest) req;
-        node.setStart(!request.stopService); // this close the server is soft shutdown, just not provide service, but still running
-        if (request.powerOff) {
+        node.setStart(!request.isStopService()); // this close the server is soft shutdown, just not provide service, but still running
+        if (request.isPowerOff()) {
             node.getDb().writeDataToDisk();
             Runtime.getRuntime().exit(0); // power off
         }

@@ -3,6 +3,7 @@ package rpc.model.requestresponse;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import raft.enums.CURDOperation;
 
 /**
@@ -10,11 +11,12 @@ import raft.enums.CURDOperation;
  * @since 4/15/2020 15:40
  */
 @Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 public class CURDKVRequest extends Request {
     private static final long serialVersionUID = -6395433429049464912L;
-    CURDOperation operation;
-    String key;
-    Object value;
+    private CURDOperation operation;
+    private String key;
+    private Object value;
 }

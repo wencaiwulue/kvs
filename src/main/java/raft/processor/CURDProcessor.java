@@ -27,7 +27,6 @@ public class CURDProcessor implements Processor {
         return req instanceof CURDKVRequest;
     }
 
-    @SuppressWarnings("NonAtomicOperationOnVolatileField")
     @Override
     public Response process(Request req, Node node) {
         CURDKVRequest request = (CURDKVRequest) req;

@@ -1,9 +1,6 @@
 package rpc.model.requestresponse;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import raft.NodeAddress;
 
 import java.net.InetSocketAddress;
@@ -13,6 +10,7 @@ import java.net.InetSocketAddress;
  * @since 4/12/2020 15:12
  */
 @Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 public class AddPeerRequest extends Request {

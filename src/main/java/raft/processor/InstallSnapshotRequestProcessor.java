@@ -38,13 +38,13 @@ public class InstallSnapshotRequestProcessor implements Processor {
     public Response process(Request req, Node node) {
         // copy file, apply
         InstallSnapshotRequest request = (InstallSnapshotRequest) req;
-        if (request.fileSize == 0) {
+        if (request.getFileSize() == 0) {
             LOGGER.error("this is impossible");
         }
 
         FileChannel fileChannel = null;
         try {
-            fileChannel = FileChannel.open(Path.of(request.filename), StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+            fileChannel = FileChannel.open(Path.of(request.getFilename()), StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
         } catch (IOException e) {
             LOGGER.error(e.getMessage());
         }
@@ -52,13 +52,13 @@ public class InstallSnapshotRequestProcessor implements Processor {
 
 
         // 应该直接写盘，还是都放在内存中(内存可能会炸)呢?
-        int times = (int) Math.ceil(request.fileSize / 4096D);
+        int times = (int) Math.ceil(request.getFileSize() / 4096D);
         int p = 0;
         int offset = 0;
         int length = 1024 * 10 * 10; // 每次下载10MB,这里如果要多线程下载，相应的连接也需要改
         do {
             int finalOffset = offset;
-            Callable<Response> c = () -> RpcClient.doRequest(request.leader, new DownloadFileRequest(request.filename, finalOffset, length));
+            Callable<Response> c = () -> RpcClient.doRequest(request.getLeader(), new DownloadFileRequest(request.getFilename(), finalOffset, length));
             Function<Response, Boolean> f = Objects::isNull;
             DownloadFileResponse response = (DownloadFileResponse) RetryUtil.retryWithResultChecker(c, f, 3);
 
@@ -76,7 +76,7 @@ public class InstallSnapshotRequestProcessor implements Processor {
         } while (p++ < times); // 下载文件
 
         List<Object> list = new LinkedList<>();
-        BackupUtil.readFromDisk(list, Path.of(request.filename).toFile());
+        BackupUtil.readFromDisk(list, Path.of(request.getFilename()).toFile());
 
         for (Object o : list) {
             StateMachine.writeLogToDB(node, (LogEntry) o);

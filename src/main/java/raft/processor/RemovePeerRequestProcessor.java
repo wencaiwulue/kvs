@@ -24,7 +24,7 @@ public class RemovePeerRequestProcessor implements Processor {
     @Override
     public Response process(Request req, Node node) {
         RemovePeerRequest request = (RemovePeerRequest) req;
-        node.getAllNodeAddresses().remove(request.peer);
+        node.getAllNodeAddresses().remove(request.getPeer());
 
         if (!node.isLeader()) {
             if (node.getLeaderAddress() == null) {
@@ -39,15 +39,15 @@ public class RemovePeerRequestProcessor implements Processor {
         } else {
             // leader will notify all node to remove peer,
             // each node receive leader command, will ask the remove peer to remove itself
-            request.sender = node.getLeaderAddress();
+            request.setSender(node.getLeaderAddress());
             for (NodeAddress nodeAddress : node.allNodeAddressExcludeMe()) {
                 RpcClient.doRequest(nodeAddress, request);
             }
-            PowerResponse response = (PowerResponse) RpcClient.doRequest(request.peer, new PowerRequest(true, true));
+            PowerResponse response = (PowerResponse) RpcClient.doRequest(request.getPeer(), new PowerRequest(true, true));
             if (response != null && response.isSuccess()) {
                 return new RemovePeerResponse();
             } else {
-                return new ErrorResponse("remove peer failed, peer info: " + request.peer);
+                return new ErrorResponse("remove peer failed, peer info: " + request.getPeer());
             }
         }
     }

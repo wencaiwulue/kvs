@@ -11,9 +11,9 @@ import java.util.Set;
  * @since 4/12/2020 15:12
  */
 @Getter
+@Setter
 @NoArgsConstructor
 @ToString
 public class AddPeerResponse extends Response {
     private static final long serialVersionUID = 1051441981605736599L;
-    private final Set<NodeAddress> anotherNode = new HashSet<>();
 }

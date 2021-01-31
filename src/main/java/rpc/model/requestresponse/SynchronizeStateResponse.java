@@ -4,8 +4,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-@Getter
-@Setter
 @NoArgsConstructor
+@Setter
+@Getter
 public class SynchronizeStateResponse extends Response {
 }
