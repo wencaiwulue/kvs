@@ -103,7 +103,7 @@ public class DB {
                 if (this.buffer.shouldToWriteOut() || this.shouldToAppend()) {
                     this.writeLock.lock();
                     try {
-//                        BackupUtil.appendToDisk(this.buffer, this.buffer.theNumberOfShouldToBeWritten(), this.dir, this.lastModify, this.fileNumber);
+                        BackupUtil.appendToDisk(this.buffer, this.buffer.theNumberOfShouldToBeWritten(), this.dir, this.lastModify, this.fileNumber);
                     } finally {
                         this.writeLock.unlock();
                     }
@@ -115,7 +115,7 @@ public class DB {
                 if (this.shouldToSnapshot()) {
                     this.lock.writeLock().lock();
                     try {
-//                        BackupUtil.snapshotToDisk(this.storage, this.dir, this.lastModify, this.fileNumber);
+                        BackupUtil.snapshotToDisk(this.storage, this.dir, this.lastModify, this.fileNumber);
                     } finally {
                         this.lock.writeLock().unlock();
                     }
