@@ -1,6 +1,7 @@
 package db.core.storage;
 
 import redis.clients.jedis.Jedis;
+import redis.clients.jedis.Pipeline;
 import util.FSTUtil;
 
 import java.util.HashMap;
@@ -50,9 +51,10 @@ public class RedisEngine implements StorageEngine {
     @SuppressWarnings("unchecked")
     public <T> Iterator<T> iterator() {
         Set<String> keys = JEDIS.keys("*");
-        Map<String, Object> map = new HashMap<>();
+        Map<String, Object> map = new HashMap<>(keys.size());
+        Pipeline pipeline = JEDIS.pipelined();
         keys.parallelStream().forEach(e -> {
-            String s = JEDIS.get(e);
+            String s = pipeline.get(e).get();
             Object o = FSTUtil.getBinaryConf().asObject(s.getBytes());
             map.put(e, o);
         });

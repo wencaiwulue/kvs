@@ -14,8 +14,8 @@ import java.time.Duration;
  */
 public interface Config {
 
-    Path DB_DIR = Path.of("~\\Documents\\kvs_" + WebSocketServer.LOCAL_ADDRESS.getPort() + "\\db");
-    Path LOG_DIR = Path.of("~\\Documents\\kvs_" + WebSocketServer.LOCAL_ADDRESS.getPort() + "\\log");
+    Path DB_DIR = Path.of(System.getProperty("user.dir"), "data", String.valueOf(WebSocketServer.LOCAL_ADDRESS.getPort()), "db");
+    Path LOG_DIR = Path.of(System.getProperty("user.dir"), "data", String.valueOf(WebSocketServer.LOCAL_ADDRESS.getPort()), "log");
 
     Duration APPEND_RATE = Duration.ofSeconds(1); // append per second
     Duration SNAPSHOT_RATE = Duration.ofMinutes(1); // snapshot per second

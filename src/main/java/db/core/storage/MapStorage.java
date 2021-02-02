@@ -9,11 +9,11 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 
 public class MapStorage implements StorageEngine {
-    public final ConcurrentHashMap<String, Object> map;// this can be replaced to RockDB、LevelDB or B-tree
+    public final ConcurrentHashMap<String, Object> map;// this can be replaced to RocksDB、LevelDB or B-tree
 
     public MapStorage() {
         // 1 << 30 is hashmap max capacity
-        this.map = new ConcurrentHashMap<>(/*1 << 30*/);
+        this.map = new ConcurrentHashMap<>(1 << 30);
     }
 
     @Override

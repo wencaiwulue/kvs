@@ -58,7 +58,7 @@ public class LogDB {
     public LogDB(Path dir) {
         this.engine = new MapStorage(); // 这是hashMap的容量
         this.dir = dir;
-        initAndReadIntoMemory();
+        this.initAndReadIntoMemory();
     }
 
     @SuppressWarnings("ResultOfMethodCallIgnored")
@@ -74,7 +74,7 @@ public class LogDB {
             List<File> dbFiles = new ArrayList<>();
 
             if (files == null || files.length == 0) {
-                File file = Path.of(f.getPath(), fileNumber.getAndIncrement() + ".db").toFile();
+                File file = Path.of(f.getPath(), fileNumber.getAndIncrement() + ".log").toFile();
                 if (!file.exists()) file.createNewFile();
                 dbFiles.add(file);
             } else {
