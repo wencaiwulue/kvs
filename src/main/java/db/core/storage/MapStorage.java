@@ -1,6 +1,7 @@
 package db.core.storage;
 
 import java.util.Iterator;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -8,8 +9,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * @since 4/28/2020 18:03
  */
 
-public class MapStorage implements StorageEngine {
-    public final ConcurrentHashMap<String, Object> map;// this can be replaced to RocksDB、LevelDB or B-tree
+public class MapStorage<K, V> implements StorageEngine<K, V> {
+    // this can be replaced to RocksDB、LevelDB or B-tree
+    public final ConcurrentHashMap<K, V> map;
 
     public MapStorage() {
         // 1 << 30 is hashmap max capacity
@@ -17,27 +19,24 @@ public class MapStorage implements StorageEngine {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
-    public <T> T get(String key) {
-        return (T) this.map.get(key);
+    public V get(K key) {
+        return this.map.get(key);
     }
 
     @Override
-    public <T> boolean set(String key, T t) {
-        this.map.put(key, t);
+    public boolean set(K key, V v) {
+        this.map.put(key, v);
         return true;
     }
 
     @Override
-    public <T> boolean remove(String key) {
+    public boolean remove(K key) {
         this.map.remove(key);
         return true;
     }
 
-    @Override
-    @SuppressWarnings("unchecked")
-    public <T> Iterator<T> iterator() {
-        return (Iterator<T>) map.entrySet().iterator();
+    public Iterator<Map.Entry<K, V>> iterator() {
+        return map.entrySet().iterator();
     }
 
 }

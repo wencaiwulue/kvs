@@ -1,6 +1,7 @@
 package db.core.storage;
 
 import java.util.Iterator;
+import java.util.Map;
 
 /**
  * storage engine, can use Redis、HashMap、LevelDB or RocksDB etc
@@ -8,14 +9,14 @@ import java.util.Iterator;
  * @author naison
  * @since 5/3/2020 17:39
  */
-public interface StorageEngine {
+public interface StorageEngine<K, V> {
 
-    <T> T get(String key);
+    V get(K key);
 
-    <T> boolean set(String key, T t);
+    boolean set(K key, V t);
 
-    <T> boolean remove(String key);
+    boolean remove(K key);
 
-    <T> Iterator<T> iterator();
+    Iterator<Map.Entry<K, V>> iterator();
 
 }

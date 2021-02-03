@@ -14,7 +14,7 @@ import java.util.Set;
  * @since 5/3/2020 18:32
  */
 
-public class RedisEngine implements StorageEngine {
+public class RedisEngine<K, V> implements StorageEngine<K, V> {
     private static final Jedis JEDIS;
 
     static {
@@ -25,39 +25,40 @@ public class RedisEngine implements StorageEngine {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
-    public <T> T get(String key) {
-        String s = JEDIS.get(key);
+    public V get(K key) {
+        String s = JEDIS.get(String.valueOf(key));
         if (s != null) {
-            return (T) FSTUtil.getBinaryConf().asObject(s.getBytes());
+            @SuppressWarnings("unchecked")
+            V o = (V) FSTUtil.getBinaryConf().asObject(s.getBytes());
+            return o;
         } else {
             return null;
         }
     }
 
     @Override
-    public <T> boolean set(String key, T t) {
-        JEDIS.set(key, FSTUtil.getBinaryConf().asJsonString(t));
+    public boolean set(K key, V v) {
+        JEDIS.set(String.valueOf(key), FSTUtil.getBinaryConf().asJsonString(v));
         return true;
     }
 
     @Override
-    public <T> boolean remove(String key) {
-        JEDIS.del(key);
+    public boolean remove(K key) {
+        JEDIS.del(String.valueOf(key));
         return true;
     }
 
     @Override
     @SuppressWarnings("unchecked")
-    public <T> Iterator<T> iterator() {
+    public Iterator<Map.Entry<K, V>> iterator() {
         Set<String> keys = JEDIS.keys("*");
-        Map<String, Object> map = new HashMap<>(keys.size());
+        Map<K, V> map = new HashMap<>(keys.size());
         Pipeline pipeline = JEDIS.pipelined();
         keys.parallelStream().forEach(e -> {
             String s = pipeline.get(e).get();
-            Object o = FSTUtil.getBinaryConf().asObject(s.getBytes());
-            map.put(e, o);
+            V o = (V) FSTUtil.getBinaryConf().asObject(s.getBytes());
+            map.put((K) e, o);
         });
-        return (Iterator<T>) map.entrySet().iterator();
+        return map.entrySet().iterator();
     }
 }
