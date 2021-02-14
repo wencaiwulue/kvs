@@ -1,5 +1,6 @@
-package db.core.storage;
+package db.core.storage.impl;
 
+import db.core.storage.StorageEngine;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.Pipeline;
 import util.FSTUtil;

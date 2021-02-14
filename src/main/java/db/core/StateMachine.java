@@ -34,7 +34,8 @@ public class StateMachine {
 
         AppendEntriesRequest request = new AppendEntriesRequest(Collections.emptyList(), leader.getLocalAddress(), leader.getCurrentTerm(), leader.getLastAppliedTerm(), leader.getLastAppliedTerm(), leader.getCommittedIndex());
         for (NodeAddress remote : leader.allNodeAddressExcludeMe()) {
-            RpcClient.doRequest(remote, request);
+            RpcClient.doRequestAsync(remote, request, (e) -> {
+            });
         }
     }
 

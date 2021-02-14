@@ -1,5 +1,6 @@
 package raft.processor;
 
+import db.core.storage.impl.MapStorage;
 import raft.Node;
 import rpc.model.requestresponse.PowerRequest;
 import rpc.model.requestresponse.PowerResponse;
@@ -21,7 +22,9 @@ public class PowerRequestProcessor implements Processor {
         PowerRequest request = (PowerRequest) req;
         node.setStart(!request.isStopService()); // this close the server is soft shutdown, just not provide service, but still running
         if (request.isPowerOff()) {
-            node.getDb().writeDataToDisk();
+            if (node.getDb().storage instanceof MapStorage) {
+                ((MapStorage<?, ?>) (node.getDb().storage)).writeDataToDisk();
+            }
             Runtime.getRuntime().exit(0); // power off
         }
         return new PowerResponse(true);

@@ -7,7 +7,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 
 /**
- * Configuration file, after project finished, will change to read from config.conf
+ * Configuration file, after project finished, will change to read from config.yaml
  *
  * @author naison
  * @since 5/3/2020 16:21

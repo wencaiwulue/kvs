@@ -17,10 +17,14 @@
         <kryo.version>5.0.0-RC5</kryo.version>
         <guava.version>28.2-jre</guava.version>
         <jedis.version>2.9.3</jedis.version>
-        <junit.version>5.6.2</junit.version>
+        <junit.jupiter.version>5.6.2</junit.jupiter.version>
         <ecplise-collection.version>10.2.0</ecplise-collection.version>
         <jetbrains-annotations.version>20.1.0</jetbrains-annotations.version>
         <netty.version>4.1.56.Final</netty.version>
+        <junit.version>4.12</junit.version>
+        <assertj.version>3.19.0</assertj.version>
+        <rocksdbjni.version>6.15.2</rocksdbjni.version>
+        <jackson.dataformat.yaml.version>2.12.1</jackson.dataformat.yaml.version>
     </properties>
 
     <dependencies>
@@ -29,6 +33,7 @@
             <artifactId>logback-classic</artifactId>
             <version>${logback.version}</version>
         </dependency>
+
         <dependency>
             <groupId>io.netty</groupId>
             <artifactId>netty-all</artifactId>
@@ -68,7 +73,7 @@
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-api</artifactId>
-            <version>${junit.version}</version>
+            <version>${junit.jupiter.version}</version>
         </dependency>
 
         <dependency>
@@ -76,10 +81,35 @@
             <artifactId>jedis</artifactId>
             <version>${jedis.version}</version>
         </dependency>
+
         <dependency>
             <groupId>org.jetbrains</groupId>
             <artifactId>annotations</artifactId>
             <version>${jetbrains-annotations.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+            <version>${jackson.dataformat.yaml.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.rocksdb</groupId>
+            <artifactId>rocksdbjni</artifactId>
+            <version>${rocksdbjni.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>${assertj.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>${junit.version}</version>
         </dependency>
     </dependencies>
 

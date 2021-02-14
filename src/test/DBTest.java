@@ -1,6 +1,6 @@
 import db.config.Config;
 import db.core.DB;
-import db.core.ExpireKey;
+import db.core.pojo.ExpireKey;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.TimeUnit;
@@ -13,7 +13,7 @@ public class DBTest {
             db.set(String.valueOf(i), i, i, TimeUnit.MINUTES);
         }
         db.expireKey(String.valueOf(2), -1, TimeUnit.NANOSECONDS);
-        db.expireKeys.remove(new ExpireKey(String.valueOf(3), 100, TimeUnit.MINUTES));
+        db.expireKeys.remove(new ExpireKey(100, TimeUnit.MINUTES, String.valueOf(3)));
         System.out.println(db.expireKeys.size());
 
     }

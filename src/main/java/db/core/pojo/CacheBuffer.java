@@ -1,4 +1,4 @@
-package db.core;
+package db.core.pojo;
 
 import com.google.common.collect.Range;
 

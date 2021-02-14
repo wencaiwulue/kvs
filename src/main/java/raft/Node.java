@@ -130,13 +130,13 @@ public class Node implements INode {
                             long size = 0;
                             try {
                                 // todo 这里需要根据index确定是哪一个文件，并且index要做到全局递增，这个怎么办？
-                                size = FileChannel.open(this.logdb.getFile().get(0).toPath(), StandardOpenOption.READ).size();
+                                size = FileChannel.open(null, StandardOpenOption.READ).size();
                             } catch (ClosedChannelException e) {
                                 LOGGER.error("who close the channel ?!!!");
                             } catch (IOException e) {
                                 LOGGER.error(e.getMessage());
                             }
-                            InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) RpcClient.doRequest(remote, new InstallSnapshotRequest(this.localAddress, this.currentTerm, this.logdb.getDir().toString(), size));
+                            InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) RpcClient.doRequest(remote, new InstallSnapshotRequest(this.localAddress, this.currentTerm, "", size));
                             if (snapshotResponse == null || !snapshotResponse.isSuccess()) {
                                 LOGGER.error("Install snapshot error, should retry?");
                             }
