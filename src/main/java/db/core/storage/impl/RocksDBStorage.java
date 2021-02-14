@@ -16,7 +16,6 @@ import java.util.Map;
 public class RocksDBStorage implements StorageEngine<byte[], byte[]> {
     private static final Logger LOG = LoggerFactory.getLogger(RocksDBStorage.class);
 
-
     private RocksDB rocksDB;
 
     public RocksDBStorage(Path dbFolder) {
@@ -28,7 +27,7 @@ public class RocksDBStorage implements StorageEngine<byte[], byte[]> {
             }
             rocksDB = RocksDB.open(dbFolder.toAbsolutePath().toString());
         } catch (RocksDBException ex) {
-            ex.printStackTrace();
+            LOG.error(ex.getMessage());
         }
     }
 
