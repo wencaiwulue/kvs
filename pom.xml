@@ -21,7 +21,7 @@
         <ecplise-collection.version>10.2.0</ecplise-collection.version>
         <jetbrains-annotations.version>20.1.0</jetbrains-annotations.version>
         <netty.version>4.1.56.Final</netty.version>
-        <junit.version>4.12</junit.version>
+        <junit.version>4.13.1</junit.version>
         <assertj.version>3.19.0</assertj.version>
         <rocksdbjni.version>6.15.2</rocksdbjni.version>
         <jackson.dataformat.yaml.version>2.12.1</jackson.dataformat.yaml.version>
