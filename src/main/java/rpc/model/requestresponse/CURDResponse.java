@@ -16,5 +16,5 @@ import lombok.Setter;
 public class CURDResponse extends Response {
     private static final long serialVersionUID = 9090842719326640223L;
     public boolean success;
-    public Object value;
+    public Object[] value;
 }

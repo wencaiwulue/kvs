@@ -172,9 +172,9 @@ public class Node implements INode {
             this.currentTerm++;
             AtomicInteger ticket = new AtomicInteger(1);//先给自己投一票
             AtomicBoolean fail = new AtomicBoolean(false);
-            CountDownLatch latch = new CountDownLatch(this.allNodeAddressExcludeMe().size());
-            Integer[] requestIds = new Integer[this.allNodeAddressExcludeMe().size()];
-            int index = 0;
+            int size = this.allNodeAddressExcludeMe().size();
+            CountDownLatch latch = new CountDownLatch(size);
+            List<Integer> requestIds = new ArrayList<>(size);
             for (NodeAddress addr : this.allNodeAddressExcludeMe()) {
                 Consumer<Response> consumer = res -> {
                     try {
@@ -198,7 +198,7 @@ public class Node implements INode {
                     }
                 };
                 VoteRequest voteRequest = new VoteRequest(this.localAddress, this.currentTerm, this.logdb.getLastLogIndex(), this.logdb.getLastLogTerm());
-                requestIds[index++] = voteRequest.getRequestId();
+                requestIds.add(voteRequest.getRequestId());
                 RpcClient.doRequestAsync(addr, voteRequest, consumer);
             }
             try {
@@ -209,15 +209,15 @@ public class Node implements INode {
                     if (ticket.getAcquire() > 1) {
                         mayInterruptIfRunning.set(false);
                     }
-                    Arrays.stream(requestIds).forEach(e -> RpcClient.cancelRequest(e, mayInterruptIfRunning.get()));
+                    requestIds.forEach(e -> RpcClient.cancelRequest(e, mayInterruptIfRunning.get()));
                     LOGGER.error("elect timeout, cancel all task");
                 }
             } catch (InterruptedException exception) {
-                Arrays.stream(requestIds).forEach(e -> RpcClient.cancelRequest(e, true));
+                requestIds.forEach(e -> RpcClient.cancelRequest(e, true));
                 LOGGER.error("elect interrupted, cancel all task");
             }
             if (fail.getAcquire()) {
-                Arrays.stream(requestIds).forEach(e -> RpcClient.cancelRequest(e, true));
+                requestIds.forEach(e -> RpcClient.cancelRequest(e, true));
                 LOGGER.error("Elect failed, cancel all task");
             }
             int mostTicketNum = (this.allNodeAddresses.size() / 2) + 1;

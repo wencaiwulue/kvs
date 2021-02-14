@@ -17,6 +17,6 @@ import raft.enums.CURDOperation;
 public class CURDKVRequest extends Request {
     private static final long serialVersionUID = -6395433429049464912L;
     private CURDOperation operation;
-    private String key;
-    private Object value;
+    private String[] key;
+    private Object[] value;
 }

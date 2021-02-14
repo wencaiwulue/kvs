@@ -87,7 +87,9 @@ public class DB {
     public void set(String key, Object value, int timeout, TimeUnit unit) {
         this.writeLock.lock();
         try {
-            if (key == null || value == null) return;
+            if (key == null || value == null) {
+                return;
+            }
             this.storage.set(key.getBytes(), FSTUtil.getJsonConf().asByteArray(value));
             if (timeout > 0) {
                 this.expireKeys.add(new ExpireKey(timeout, unit, key));

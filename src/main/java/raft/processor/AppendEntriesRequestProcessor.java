@@ -9,6 +9,9 @@ import raft.enums.Role;
 import rpc.model.requestresponse.*;
 import util.CollectionUtil;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * @author naison
  * @since 4/13/2020 14:42
@@ -42,6 +45,20 @@ public class AppendEntriesRequestProcessor implements Processor {
                         } else if (request.getTerm() >= node.getCurrentTerm()) {
                             node.setCurrentTerm(request.getTerm());
                             node.setLeaderAddress(request.getLeaderId());
+                            // second round to apply log to db
+                            long size = request.getCommittedIndex() - node.getCommittedIndex();
+                            if (size > 0) {
+                                if (size < 100) {
+                                    List<LogEntry> logEntryList = new ArrayList<>();
+                                    for (long i = node.getCommittedIndex(); i < request.getCommittedIndex(); i++) {
+                                        logEntryList.add((LogEntry) node.getLogdb().get(String.valueOf(i)));
+                                    }
+                                    StateMachine.apply(logEntryList, node);
+                                } else {
+                                    // out of date too much, needs to install snapshot for synchronizing data
+                                    return new ErrorResponse();
+                                }
+                            }
                         }
                         break;
                     case CANDIDATE:
@@ -58,25 +75,41 @@ public class AppendEntriesRequestProcessor implements Processor {
                 return new AppendEntriesResponse(node.getCurrentTerm(), true, node.getLogdb().getLastLogIndex());
             } else {
                 LOGGER.info("{} --> {}, receive synchronize log, term: {}", request.getLeaderId().getSocketAddress().getPort(), node.getLocalAddress().getSocketAddress().getPort(), request.getTerm());
-                if (request.getCommittedIndex() == node.getCommittedIndex()) {
-                    node.getLogdb().save(request.getEntries());
-                } else if (request.getCommittedIndex() > node.getCommittedIndex()) {
-                    long size = request.getCommittedIndex() - request.getPrevLogIndex();
-                    // if out of time too much, then use InstallSnapshot to scp zip file and install
-                    if (size < 100) {
-                        for (long i = 1; i < size + 1; i++) {
-                            LogEntry entry = (LogEntry) node.getLogdb().get(String.valueOf(request.getPrevLogIndex() + i));
-                            if (entry != null) {
-                                StateMachine.writeLogToDB(node, entry);
-                            }
+                switch (node.getRole()) {
+                    case FOLLOWER:
+                        if (request.getTerm() > node.getCurrentTerm()) {
+                            node.setCurrentTerm(request.getTerm());
+                            node.getLogdb().save(request.getEntries());
+                        } else if (request.getTerm() == node.getCurrentTerm()) {
+                            node.getLogdb().save(request.getEntries());
+                        } else {
+                            return new AppendEntriesResponse(node.getCurrentTerm(), false, node.getLogdb().getLastLogIndex());
                         }
-                        node.setCommittedIndex(request.getCommittedIndex());
-                    } else {
-                        // install snapshot
-                        return new ErrorResponse();
-                    }
-                } else {
-                    LOGGER.error("this should not happened");
+                        break;
+                    case CANDIDATE:
+                        if (request.getTerm() > node.getCurrentTerm()) {
+                            node.setCurrentTerm(request.getTerm());
+                            node.setRole(Role.FOLLOWER);
+                            request.getEntries().forEach(e -> node.getDb().set(e.getKey(), e.getValue()));
+                        } else if (request.getTerm() == node.getCurrentTerm()) {
+                            node.setRole(Role.FOLLOWER);
+                            request.getEntries().forEach(e -> node.getDb().set(e.getKey(), e.getValue()));
+                        } else {
+                            return new AppendEntriesResponse(node.getCurrentTerm(), false, node.getLogdb().getLastLogIndex());
+                        }
+                        break;
+                    case LEADER:
+                        if (request.getTerm() > node.getCurrentTerm()) {
+                            node.setCurrentTerm(request.getTerm());
+                            node.setRole(Role.FOLLOWER);
+                            request.getEntries().forEach(e -> node.getDb().set(e.getKey(), e.getValue()));
+                        } else if (request.getTerm() == node.getCurrentTerm()) {
+                            LOGGER.error("This is impossible");
+                            return new AppendEntriesResponse(node.getCurrentTerm(), false, node.getLogdb().getLastLogIndex());
+                        } else {
+                            return new AppendEntriesResponse(node.getCurrentTerm(), false, node.getLogdb().getLastLogIndex());
+                        }
+                        break;
                 }
                 return new AppendEntriesResponse(node.getCurrentTerm(), true, node.getLogdb().getLastLogIndex());
             }

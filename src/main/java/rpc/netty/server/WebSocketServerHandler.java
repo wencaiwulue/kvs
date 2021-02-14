@@ -95,7 +95,7 @@ public class WebSocketServerHandler extends SimpleChannelInboundHandler<Object> 
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        LOGGER.error(cause.getMessage());
+        LOGGER.error("error info: {}", cause.getMessage());
         ctx.close();
     }
 }

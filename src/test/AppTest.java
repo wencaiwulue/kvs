@@ -53,9 +53,13 @@ class AppTest {
     }
 
     @Test
-    void curd() throws Exception {
-        NettyClientTest.main(p8001, new CURDKVRequest(CURDOperation.set, "a", 1));
-        NettyClientTest.main(p8002, new CURDKVRequest(CURDOperation.set, "b", 2));
+    void addData() throws Exception {
+        NettyClientTest.main(p8001, new CURDKVRequest(CURDOperation.set, new String[]{"a"}, new Object[]{1}));
+    }
+
+    @Test
+    void getData() throws Exception {
+        NettyClientTest.main(p8002, new CURDKVRequest(CURDOperation.get, new String[]{"a"}, null));
     }
 
 }

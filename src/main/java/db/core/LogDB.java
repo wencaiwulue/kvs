@@ -50,7 +50,9 @@ public class LogDB {
     }
 
     public void set(String key, Object value) {
-        if (key == null || value == null) return;
+        if (key == null || value == null) {
+            return;
+        }
         this.engine.set(key.getBytes(), FSTUtil.getJsonConf().asByteArray(value));
     }
 

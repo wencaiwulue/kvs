@@ -20,36 +20,40 @@ import java.util.List;
 public class StateMachine {
     private static final Logger LOGGER = LoggerFactory.getLogger(StateMachine.class);
 
-
     public static List<Service> services = Arrays.asList(new ExpireOperationService(), new GetOperationService(), new RemoveOperationService(), new SetOperationService());
 
     /*
      * 发送心跳包，告诉 follower apply log
+     * issue: if network split occurs between after leader apply log to db and notify peer to apply log to db
+     * how to avoid this issue ?
      * */
-    public static void apply(List<LogEntry> entries, Node leader) {
+    public static void apply(List<LogEntry> entries, Node node) {
+        // apply log to db
         for (LogEntry entry : entries) {
-            writeLogToDB(leader, entry);
+            writeLogToDB(node, entry);
         }
-        leader.setCommittedIndex(entries.get(entries.size() - 1).getIndex());
-
-        AppendEntriesRequest request = new AppendEntriesRequest(Collections.emptyList(), leader.getLocalAddress(), leader.getCurrentTerm(), leader.getLastAppliedTerm(), leader.getLastAppliedTerm(), leader.getCommittedIndex());
-        for (NodeAddress remote : leader.allNodeAddressExcludeMe()) {
-            RpcClient.doRequestAsync(remote, request, (e) -> {
-            });
+        // push commitIndex
+        node.setCommittedIndex(entries.get(entries.size() - 1).getIndex());
+        if (node.isLeader()) {
+            // notify peer to apply log to db
+            AppendEntriesRequest request = new AppendEntriesRequest(Collections.emptyList(), node.getLocalAddress(), node.getCurrentTerm(), node.getLastAppliedTerm(), node.getLastAppliedTerm(), node.getCommittedIndex());
+            for (NodeAddress remote : node.allNodeAddressExcludeMe()) {
+                RpcClient.doRequestAsync(remote, request, e -> {
+                });
+            }
         }
     }
 
     // use strategy mode
-    public static void writeLogToDB(Node leader, LogEntry entry) {
-
+    public static void writeLogToDB(Node node, LogEntry entry) {
         for (Service service : services) {
             if (service.supports(entry.getOperation())) {
-                service.service(leader, entry);
+                service.service(node, entry);
+                node.getLogdb().remove(String.valueOf(entry.getIndex()));
                 return;
             }
         }
-
-        LOGGER.error("Operation:" + entry.getOperation() + " is not support.");
-        throw new UnsupportedOperationException("Operation:" + entry.getOperation() + " is not support.");
+        LOGGER.error("Operation:" + entry.getOperation() + " is not support");
+        throw new UnsupportedOperationException("Operation:" + entry.getOperation() + " is not support");
     }
 }
