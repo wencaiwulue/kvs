@@ -13,6 +13,7 @@ import rpc.model.requestresponse.Response;
 import rpc.netty.RpcClient;
 import rpc.netty.server.WebSocketServer;
 import util.FSTUtil;
+import util.ThreadUtil;
 
 import java.net.InetSocketAddress;
 
@@ -98,12 +99,14 @@ public class WebSocketClientHandler extends SimpleChannelInboundHandler<Object> 
             if (object instanceof Response) {
                 RpcClient.addResponse(((Response) object).getRequestId(), (Response) object);
             } else if (object instanceof Request) {
-                Response response = WebSocketServer.node.handle((Request) object);
-                if (response != null) {
-                    byte[] byteArray = FSTUtil.getBinaryConf().asByteArray(response);
-                    ctx.writeAndFlush(new BinaryWebSocketFrame(Unpooled.wrappedBuffer(byteArray)))
-                            .addListeners(ChannelFutureListener.CLOSE_ON_FAILURE);
-                }
+                ThreadUtil.getThreadPool().submit(() -> {
+                    Response response = WebSocketServer.node.handle((Request) object);
+                    if (response != null) {
+                        byte[] byteArray = FSTUtil.getBinaryConf().asByteArray(response);
+                        ctx.writeAndFlush(new BinaryWebSocketFrame(Unpooled.wrappedBuffer(byteArray)))
+                                .addListeners(ChannelFutureListener.CLOSE_ON_FAILURE);
+                    }
+                });
             }
         }
     }

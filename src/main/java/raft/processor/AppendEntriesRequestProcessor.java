@@ -48,6 +48,7 @@ public class AppendEntriesRequestProcessor implements Processor {
                             // second round to apply log to db
                             long size = request.getCommittedIndex() - node.getCommittedIndex();
                             if (size > 0) {
+                                LOGGER.info("Second round to apply log to db");
                                 if (size < 100) {
                                     List<LogEntry> logEntryList = new ArrayList<>();
                                     for (long i = node.getCommittedIndex() + 1; i <= request.getCommittedIndex(); i++) {

@@ -16,6 +16,7 @@ import rpc.model.requestresponse.Response;
 import rpc.netty.config.Constant;
 import rpc.netty.RpcClient;
 import util.FSTUtil;
+import util.ThreadUtil;
 
 import java.net.InetSocketAddress;
 
@@ -81,14 +82,16 @@ public class WebSocketServerHandler extends SimpleChannelInboundHandler<Object> 
             if (object instanceof Response) {
                 RpcClient.addResponse(((Response) object).getRequestId(), (Response) object);
             } else if (object instanceof Request) {
-                Response response = WebSocketServer.node.handle((Request) object);
-                LOGGER.info("{} --> {} message: {}", remoteAddress.getPort(), WebSocketServer.LOCAL_ADDRESS.getPort(), object.toString());
-                if (response != null) {
-                    LOGGER.info("{} --> {} response: {}", WebSocketServer.LOCAL_ADDRESS.getPort(), remoteAddress.getPort(), response.toString());
-                    byte[] byteArray = FSTUtil.getBinaryConf().asByteArray(response);
-                    ctx.writeAndFlush(new BinaryWebSocketFrame(Unpooled.wrappedBuffer(byteArray)))
-                            .addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
-                }
+                ThreadUtil.getThreadPool().submit(() -> {
+                    Response response = WebSocketServer.node.handle((Request) object);
+                    LOGGER.info("{} --> {} message: {}", remoteAddress.getPort(), WebSocketServer.LOCAL_ADDRESS.getPort(), object.toString());
+                    if (response != null) {
+                        LOGGER.info("{} --> {} response: {}", WebSocketServer.LOCAL_ADDRESS.getPort(), remoteAddress.getPort(), response.toString());
+                        byte[] byteArray = FSTUtil.getBinaryConf().asByteArray(response);
+                        ctx.writeAndFlush(new BinaryWebSocketFrame(Unpooled.wrappedBuffer(byteArray)))
+                                .addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
+                    }
+                });
             }
         }
     }

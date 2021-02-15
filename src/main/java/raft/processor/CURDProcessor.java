@@ -68,9 +68,10 @@ public class CURDProcessor implements Processor {
         node.getWriteLock().lock();
         try {
             if (!node.isLeader()) {
-                LOGGER.warn("Current node: {}, role: {}, leader info: {}", node.getLocalAddress().getSocketAddress().getPort(), node.getRole(), node.getLeaderAddress().getSocketAddress().getPort());
+                LOGGER.warn("Redirect to leader: {},  current node: {}, role: {}", node.getLeaderAddress().getSocketAddress().getPort(), node.getLocalAddress().getSocketAddress().getPort(), node.getRole());
                 return RpcClient.doRequest(node.getLeaderAddress(), req); // redirect to leader
             }
+            LOGGER.info("Leader receive CURD request");
 
             List<LogEntry> logEntries = new ArrayList<>(request.getKey().length);
             int lastValue = node.getLogdb().getLastLogIndex();
@@ -123,6 +124,7 @@ public class CURDProcessor implements Processor {
             } catch (InterruptedException ex) {
                 requestIds.forEach(e -> RpcClient.cancelRequest(e, true));
                 LOGGER.warn("Waiting for response was interrupted, info: {}", ex.getMessage());
+                return new CURDResponse(false, null);
             }
 
             if (ai.get() >= (node.getAllNodeAddresses().size() / 2 + 1)) { // more than half peer already write to log
