@@ -16,8 +16,8 @@ import raft.NodeAddress;
 @ToString
 public class VoteRequest extends Request {
     private static final long serialVersionUID = -6056301287980072876L;
-    private NodeAddress candidateId;
     private int term;
+    private NodeAddress candidateId;
     private int lastLogIndex;
     private int lastLogTerm;
 

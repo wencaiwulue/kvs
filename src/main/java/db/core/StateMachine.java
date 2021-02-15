@@ -40,7 +40,7 @@ public class StateMachine {
         node.setCommittedIndex(entries.get(entries.size() - 1).getIndex());
         if (node.isLeader()) {
             // notify peer to apply log to db
-            AppendEntriesRequest request = new AppendEntriesRequest(Collections.emptyList(), node.getLocalAddress(), node.getCurrentTerm(), node.getLastAppliedTerm(), node.getLastAppliedTerm(), node.getCommittedIndex());
+            AppendEntriesRequest request = new AppendEntriesRequest(node.getCurrentTerm(), node.getLeaderAddress(), node.getLogdb().getLastLogIndex(), node.getLogdb().getLastLogTerm(), Collections.emptyList(), node.getCommittedIndex());
             for (NodeAddress remote : node.allNodeAddressExcludeMe()) {
                 RpcClient.doRequestAsync(remote, request, e -> {
                 });

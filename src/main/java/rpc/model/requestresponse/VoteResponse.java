@@ -14,13 +14,13 @@ import lombok.NoArgsConstructor;
 public class VoteResponse extends Response {
     private static final long serialVersionUID = 6388639175646732562L;
     int term;
-    boolean grant;
+    boolean voteGranted;
 
     public int getTerm() {
         return term;
     }
 
-    public boolean isGrant() {
-        return grant;
+    public boolean isVoteGranted() {
+        return voteGranted;
     }
 }

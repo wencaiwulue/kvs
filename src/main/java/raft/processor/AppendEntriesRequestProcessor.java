@@ -37,21 +37,21 @@ public class AppendEntriesRequestProcessor implements Processor {
                 switch (node.getRole()) {
                     case LEADER:
                         LOGGER.error("leader receive heartbeats ??");
-                        return new AppendEntriesResponse(node.getCurrentTerm(), false, node.getLogdb().getLastLogIndex());
+                        return new AppendEntriesResponse(node.getCurrentTerm(), false);
                     case FOLLOWER:
                         if (request.getTerm() < node.getCurrentTerm()) {
                             LOGGER.error("leader term should not less than follower's term");
-                            return new AppendEntriesResponse(node.getCurrentTerm(), false, node.getLogdb().getLastLogIndex());
+                            return new AppendEntriesResponse(node.getCurrentTerm(), false);
                         } else if (request.getTerm() >= node.getCurrentTerm()) {
                             node.setCurrentTerm(request.getTerm());
                             node.setLeaderAddress(request.getLeaderId());
                             // second round to apply log to db
-                            long size = request.getCommittedIndex() - node.getCommittedIndex();
+                            long size = request.getLeaderCommit() - node.getCommittedIndex();
                             if (size > 0) {
                                 LOGGER.info("Second round to apply log to db");
                                 if (size < 100) {
                                     List<LogEntry> logEntryList = new ArrayList<>();
-                                    for (long i = node.getCommittedIndex() + 1; i <= request.getCommittedIndex(); i++) {
+                                    for (long i = node.getCommittedIndex() + 1; i <= request.getLeaderCommit(); i++) {
                                         LogEntry logEntry = node.getLogdb().get(i);
                                         if (logEntry == null) {
                                             LOGGER.warn("index: {} not found log at node: {}", i, node.getLocalAddress().getSocketAddress().getPort());
@@ -70,7 +70,7 @@ public class AppendEntriesRequestProcessor implements Processor {
                     case CANDIDATE:
                         if (request.getTerm() < node.getCurrentTerm()) {
                             LOGGER.error("leader term should not less than candidate's term");
-                            return new AppendEntriesResponse(node.getCurrentTerm(), false, node.getLogdb().getLastLogIndex());
+                            return new AppendEntriesResponse(node.getCurrentTerm(), false);
                         } else if (request.getTerm() >= node.getCurrentTerm()) {
                             node.setCurrentTerm(request.getTerm());
                             node.setLeaderAddress(request.getLeaderId());
@@ -78,7 +78,7 @@ public class AppendEntriesRequestProcessor implements Processor {
                         }
                         break;
                 }
-                return new AppendEntriesResponse(node.getCurrentTerm(), true, node.getLogdb().getLastLogIndex());
+                return new AppendEntriesResponse(node.getCurrentTerm(), true);
             } else {
                 LOGGER.info("{} --> {}, receive synchronize log, term: {}", request.getLeaderId().getSocketAddress().getPort(), node.getLocalAddress().getSocketAddress().getPort(), request.getTerm());
                 switch (node.getRole()) {
@@ -89,7 +89,7 @@ public class AppendEntriesRequestProcessor implements Processor {
                         } else if (request.getTerm() == node.getCurrentTerm()) {
                             node.getLogdb().save(request.getEntries());
                         } else {
-                            return new AppendEntriesResponse(node.getCurrentTerm(), false, node.getLogdb().getLastLogIndex());
+                            return new AppendEntriesResponse(node.getCurrentTerm(), false);
                         }
                         break;
                     case CANDIDATE:
@@ -101,7 +101,7 @@ public class AppendEntriesRequestProcessor implements Processor {
                             node.setRole(Role.FOLLOWER);
                             request.getEntries().forEach(e -> node.getDb().set(e.getKey(), e.getValue()));
                         } else {
-                            return new AppendEntriesResponse(node.getCurrentTerm(), false, node.getLogdb().getLastLogIndex());
+                            return new AppendEntriesResponse(node.getCurrentTerm(), false);
                         }
                         break;
                     case LEADER:
@@ -111,13 +111,13 @@ public class AppendEntriesRequestProcessor implements Processor {
                             request.getEntries().forEach(e -> node.getDb().set(e.getKey(), e.getValue()));
                         } else if (request.getTerm() == node.getCurrentTerm()) {
                             LOGGER.error("This is impossible");
-                            return new AppendEntriesResponse(node.getCurrentTerm(), false, node.getLogdb().getLastLogIndex());
+                            return new AppendEntriesResponse(node.getCurrentTerm(), false);
                         } else {
-                            return new AppendEntriesResponse(node.getCurrentTerm(), false, node.getLogdb().getLastLogIndex());
+                            return new AppendEntriesResponse(node.getCurrentTerm(), false);
                         }
                         break;
                 }
-                return new AppendEntriesResponse(node.getCurrentTerm(), true, node.getLogdb().getLastLogIndex());
+                return new AppendEntriesResponse(node.getCurrentTerm(), true);
             }
         } finally {
             node.getWriteLock().unlock();

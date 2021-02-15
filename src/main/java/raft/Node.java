@@ -12,15 +12,24 @@ import org.slf4j.LoggerFactory;
 import raft.config.Constant;
 import raft.enums.Role;
 import raft.processor.Processor;
-import rpc.model.requestresponse.*;
+import rpc.model.requestresponse.AppendEntriesRequest;
+import rpc.model.requestresponse.ErrorResponse;
+import rpc.model.requestresponse.InstallSnapshotRequest;
+import rpc.model.requestresponse.InstallSnapshotResponse;
+import rpc.model.requestresponse.Request;
+import rpc.model.requestresponse.Response;
+import rpc.model.requestresponse.SynchronizeStateRequest;
+import rpc.model.requestresponse.VoteRequest;
+import rpc.model.requestresponse.VoteResponse;
 import rpc.netty.RpcClient;
 import util.ThreadUtil;
 
-import java.io.IOException;
-import java.nio.channels.ClosedChannelException;
-import java.nio.channels.FileChannel;
-import java.nio.file.StandardOpenOption;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.ServiceLoader;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -46,6 +55,8 @@ public class Node implements INode {
 
     // current node address
     private NodeAddress localAddress;
+    // cluster leader address
+    private volatile NodeAddress leaderAddress;
     // all nodes address, include current node
     private Set<NodeAddress> allNodeAddresses;
 
@@ -56,19 +67,17 @@ public class Node implements INode {
 
     private volatile long committedIndex = 0;
     private AtomicLong lastAppliedIndex = new AtomicLong(0);
-    private volatile int lastAppliedTerm = 0;
-    private volatile long nextIndex;
-
-    // first elect can be longer than normal election time
-    private volatile long nextElectTime = this.nextElectTime() + TimeUnit.SECONDS.toMillis(5);
-    private volatile long nextHeartbeatTime /*= System.currentTimeMillis() + this.heartBeatRate*/;
+    private volatile List<Integer> nextIndex; // (Reinitialized after election)
+    private volatile List<Integer> matchIndex;// (Reinitialized after election)
 
     // persistent storage currentTerm and lastVoteFor
     private volatile int currentTerm = 0;
     // current term whether voted or not
     private volatile NodeAddress lastVoteFor;
-    // cluster leader address
-    private volatile NodeAddress leaderAddress;
+
+    // first elect can be longer than normal election time
+    private volatile long nextElectTime = this.nextElectTime() + TimeUnit.SECONDS.toMillis(5);
+    private volatile long nextHeartbeatTime;
 
     private ReadWriteLock lock = new ReentrantReadWriteLock();
     private Lock readLock = this.lock.readLock();
@@ -88,7 +97,9 @@ public class Node implements INode {
         this.allNodeAddresses = allNodeAddresses;
         this.db = new DB(Config.DB_DIR);
         this.logdb = new LogDB(Config.LOG_DIR);
-        this.nextIndex = this.logdb.getLastLogIndex() + 1;
+        this.nextIndex = new ArrayList<>();
+        this.nextIndex.add(this.logdb.getLastLogIndex() + 1);
+        this.matchIndex = new ArrayList<>();
 
         // read from persistent storage, write before return result to client
         this.currentTerm = this.logdb.getCurrentTerm();
@@ -130,27 +141,20 @@ public class Node implements INode {
             if (isLeader()) {
                 for (NodeAddress remote : this.allNodeAddressExcludeMe()) {
                     Consumer<Response> consumer = response -> {
-                        // install snapshot
-                        if (response instanceof ErrorResponse) {// todo 这里约定的是如果心跳包回复ErrorResponse, 说明是out的节点，需要安装更新
-                            long size = 0;
-                            try {
-                                // todo 这里需要根据index确定是哪一个文件，并且index要做到全局递增，这个怎么办？
-                                size = FileChannel.open(null, StandardOpenOption.READ).size();
-                            } catch (ClosedChannelException e) {
-                                LOGGER.error("who close the channel ?!!!");
-                            } catch (IOException e) {
-                                LOGGER.error(e.getMessage());
-                            }
-                            InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) RpcClient.doRequest(remote, new InstallSnapshotRequest(this.localAddress, this.currentTerm, "", size));
-                            if (snapshotResponse == null || !snapshotResponse.isSuccess()) {
-                                LOGGER.error("Install snapshot error, should retry?");
-                            }
-                        }
                         if (response != null) {
                             LOGGER.info("{} --> {}, receive heartbeat response", remote.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort());
                         }
+                        // install snapshot
+                        // todo 这里约定的是如果心跳包回复ErrorResponse, 说明是out的节点，需要安装更新
+                        if (response instanceof ErrorResponse) {
+                            InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) RpcClient.doRequest(remote, new InstallSnapshotRequest(this.currentTerm, this.localAddress, 0, 0, 0, null, true));
+                            if (snapshotResponse == null || snapshotResponse.getTerm() < this.currentTerm) {
+                                LOGGER.error("Install snapshot error, should retry or not ?");
+                            }
+                        }
                     };
-                    AppendEntriesRequest request = new AppendEntriesRequest(Collections.emptyList(), this.localAddress, this.currentTerm, this.lastAppliedTerm, this.lastAppliedIndex.intValue(), this.committedIndex);
+                    int lastAppliedTerm = this.logdb.getLastLogTerm();
+                    AppendEntriesRequest request = new AppendEntriesRequest(this.currentTerm, this.localAddress, lastAppliedTerm, this.lastAppliedIndex.intValue(), Collections.emptyList(), this.committedIndex);
                     RpcClient.doRequestAsync(remote, request, consumer);
                 }
                 this.nextElectTime = this.nextElectTime();
@@ -186,7 +190,7 @@ public class Node implements INode {
                         if (res != null) {
                             VoteResponse response = (VoteResponse) res;
                             LOGGER.info("{} --> {}, vote response: {}", addr.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort(), response.toString());
-                            if (this.role.equals(Role.CANDIDATE) && response.isGrant() && response.getTerm() == this.currentTerm) {
+                            if (this.role.equals(Role.CANDIDATE) && response.isVoteGranted() && response.getTerm() == this.currentTerm) {
                                 ticket.incrementAndGet();
                             } else if (response.getTerm() > this.currentTerm) {
                                 this.role = Role.FOLLOWER;
@@ -202,7 +206,7 @@ public class Node implements INode {
                         latch.countDown();
                     }
                 };
-                VoteRequest voteRequest = new VoteRequest(this.localAddress, this.currentTerm, this.logdb.getLastLogIndex(), this.logdb.getLastLogTerm());
+                VoteRequest voteRequest = new VoteRequest(this.currentTerm, this.localAddress, this.logdb.getLastLogIndex(), this.logdb.getLastLogTerm());
                 requestIds.add(voteRequest.getRequestId());
                 RpcClient.doRequestAsync(addr, voteRequest, consumer);
             }

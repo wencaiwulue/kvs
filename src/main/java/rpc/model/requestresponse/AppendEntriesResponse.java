@@ -17,5 +17,4 @@ public class AppendEntriesResponse extends Response {
     private static final long serialVersionUID = -6253521216698393268L;
     private int term;
     private boolean success = false;
-    private int lastLogIndex;
 }

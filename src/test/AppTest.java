@@ -56,7 +56,7 @@ class AppTest {
 
     @Test
     void addData() throws Exception {
-        Response res = NettyClientTest.sendSync(p8003, new CURDKVRequest(CURDOperation.set, new String[]{"a"}, new Object[]{3}));
+        Response res = NettyClientTest.sendSync(p8001, new CURDKVRequest(CURDOperation.set, new String[]{"a"}, new Object[]{5}));
         System.out.println(((CURDResponse) res).success);
     }
 

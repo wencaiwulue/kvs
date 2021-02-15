@@ -110,7 +110,7 @@ public class CURDProcessor implements Processor {
                         latch.countDown();
                     }
                 };
-                AppendEntriesRequest entriesRequest = new AppendEntriesRequest(logEntries, node.getLocalAddress(), node.getCurrentTerm(), node.getLastAppliedIndex().intValue(), node.getLastAppliedTerm(), node.getCommittedIndex());
+                AppendEntriesRequest entriesRequest = new AppendEntriesRequest(node.getCurrentTerm(), node.getLocalAddress(), node.getLastAppliedIndex().intValue(), node.getLogdb().getLastLogTerm(), logEntries, node.getCommittedIndex());
                 requestIds.add(entriesRequest.getRequestId());
                 RpcClient.doRequestAsync(peerAddress, entriesRequest, c);
             }

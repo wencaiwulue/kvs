@@ -21,10 +21,10 @@ import java.util.List;
 public class AppendEntriesRequest extends Request {
     private static final long serialVersionUID = -2322012843577274410L;
 
-    private List<LogEntry> entries = Collections.emptyList();// if it is empty, means it's a heartbeat
-    private NodeAddress leaderId;
     private int term;
-    private int prevLogTerm;
+    private NodeAddress leaderId;
     private long prevLogIndex;
-    private long committedIndex;
+    private int prevLogTerm;
+    private List<LogEntry> entries = Collections.emptyList();// if it is empty, means it's a heartbeat
+    private long leaderCommit;
 }

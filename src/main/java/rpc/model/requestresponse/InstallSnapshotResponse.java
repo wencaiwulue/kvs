@@ -15,5 +15,5 @@ import lombok.Setter;
 @AllArgsConstructor
 public class InstallSnapshotResponse extends Response {
     private static final long serialVersionUID = 4562785019544269943L;
-    private boolean success;
+    private int term;
 }
