@@ -24,4 +24,12 @@ public class JsonTest {
         }
         System.out.println(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
     }
+
+    @Test
+    public void TestParseLong() {
+        byte[] bytes = FSTUtil.getBinaryConf().asByteArray(123L);
+        Long aLong = (Long) FSTUtil.getBinaryConf().asObject(bytes);
+        System.out.println(aLong);
+    }
+
 }

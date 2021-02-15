@@ -27,7 +27,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * @since 4/1/2020 10:53
  */
 public class DB {
-    private static final Logger log = LoggerFactory.getLogger(DB.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(DB.class);
 
     public final StorageEngine<byte[], byte[]> storage;
 
@@ -46,15 +46,15 @@ public class DB {
         this.checkExpireKey();
     }
 
-
-    // check key expire every seconds
     public void checkExpireKey() {
         Runnable checkExpireTask = () -> {
-            while (!this.expireKeys.isEmpty()) {
+            //noinspection InfiniteLoopStatement
+            while (true) {
                 ExpireKey expireKey = null;
                 try {
                     expireKey = this.expireKeys.take();
-                } catch (InterruptedException ignored) {
+                } catch (InterruptedException ex) {
+                    LOGGER.error("expire key error, info: {}", ex.getMessage());
                 }
                 if (expireKey != null) {
                     this.writeLock.lock();
@@ -67,14 +67,18 @@ public class DB {
             }
         };
 
-        ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(checkExpireTask, 0, 1, TimeUnit.SECONDS);
+        ThreadUtil.getScheduledThreadPool().submit(checkExpireTask);
     }
 
 
     public Object get(String key) {
         this.readLock.lock();
         try {
-            return this.storage.get(key.getBytes());
+            byte[] bytes = this.storage.get(key.getBytes());
+            if (bytes == null) {
+                return null;
+            }
+            return FSTUtil.getBinaryConf().asObject(bytes);
         } finally {
             this.readLock.unlock();
         }
@@ -90,7 +94,7 @@ public class DB {
             if (key == null || value == null) {
                 return;
             }
-            this.storage.set(key.getBytes(), FSTUtil.getJsonConf().asByteArray(value));
+            this.storage.set(key.getBytes(), FSTUtil.getBinaryConf().asByteArray(value));
             if (timeout > 0) {
                 this.expireKeys.add(new ExpireKey(timeout, unit, key));
             }

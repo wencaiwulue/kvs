@@ -8,6 +8,7 @@ import org.rocksdb.WriteBatch;
 import org.rocksdb.WriteOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import util.FSTUtil;
 
 import java.nio.file.Path;
 import java.util.Iterator;
@@ -27,7 +28,7 @@ public class RocksDBStorage implements StorageEngine<byte[], byte[]> {
             }
             rocksDB = RocksDB.open(dbFolder.toAbsolutePath().toString());
         } catch (RocksDBException ex) {
-            LOG.error(ex.getMessage());
+            LOG.error("init error: {}", ex.getMessage());
         }
     }
 
@@ -41,6 +42,7 @@ public class RocksDBStorage implements StorageEngine<byte[], byte[]> {
             rocksDB.write(wOpt, batch);
             return true;
         } catch (RocksDBException exception) {
+            LOG.error("set batch error: {}", exception.getMessage());
             return false;
         }
     }
@@ -50,6 +52,7 @@ public class RocksDBStorage implements StorageEngine<byte[], byte[]> {
         try {
             return rocksDB.get(key);
         } catch (RocksDBException e) {
+            LOG.error("get from rocksdb error, key: {}, error info: {}", new String(key), e.getMessage());
             return new byte[0];
         }
     }
@@ -60,6 +63,7 @@ public class RocksDBStorage implements StorageEngine<byte[], byte[]> {
             rocksDB.put(key, t);
             return true;
         } catch (RocksDBException e) {
+            LOG.error("rocksdb set error, key: {}, value: {}. error info: {}", new String(key), FSTUtil.getBinaryConf().asObject(t), e.getMessage());
             return false;
         }
     }
@@ -70,6 +74,7 @@ public class RocksDBStorage implements StorageEngine<byte[], byte[]> {
             rocksDB.delete(key);
             return true;
         } catch (RocksDBException e) {
+            LOG.warn("remove error: {}", e.getMessage());
             return false;
         }
     }

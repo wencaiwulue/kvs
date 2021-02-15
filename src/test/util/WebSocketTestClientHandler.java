@@ -1,33 +1,44 @@
 package util;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.channel.*;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelFutureListener;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelPromise;
+import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpResponse;
-import io.netty.handler.codec.http.websocketx.*;
+import io.netty.handler.codec.http.websocketx.BinaryWebSocketFrame;
+import io.netty.handler.codec.http.websocketx.CloseWebSocketFrame;
+import io.netty.handler.codec.http.websocketx.PingWebSocketFrame;
+import io.netty.handler.codec.http.websocketx.PongWebSocketFrame;
+import io.netty.handler.codec.http.websocketx.WebSocketClientHandshaker;
+import io.netty.handler.codec.http.websocketx.WebSocketFrame;
+import io.netty.handler.codec.http.websocketx.WebSocketHandshakeException;
 import io.netty.util.CharsetUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import rpc.model.requestresponse.Request;
 import rpc.model.requestresponse.Response;
 import rpc.netty.RpcClient;
-import rpc.netty.server.WebSocketServer;
-
-import java.net.InetSocketAddress;
 
 public class WebSocketTestClientHandler extends SimpleChannelInboundHandler<Object> {
     private static final Logger LOGGER = LoggerFactory.getLogger(WebSocketTestClientHandler.class);
 
     private final WebSocketClientHandshaker handShaker;
     private ChannelPromise handshakeFuture;
-    private final InetSocketAddress remote;
+    private Response response;
 
-    public WebSocketTestClientHandler(WebSocketClientHandshaker handShaker, InetSocketAddress remote) {
+    public WebSocketTestClientHandler(WebSocketClientHandshaker handShaker) {
         this.handShaker = handShaker;
-        this.remote = remote;
     }
 
     public ChannelFuture getHandshakeFuture() {
         return handshakeFuture;
+    }
+
+    public Response getResponse() {
+        return response;
     }
 
     @Override
@@ -92,11 +103,13 @@ public class WebSocketTestClientHandler extends SimpleChannelInboundHandler<Obje
             byte[] bytes = new byte[buffer.capacity()];
             buffer.readBytes(bytes);
             Object object = FSTUtil.getBinaryConf().asObject(bytes);
-            LOGGER.info("{} --> {} message: {}", remote.getPort(), WebSocketServer.LOCAL_ADDRESS.getPort(), object.toString());
+            LOGGER.info("message from server, message: {}", object);
             if (object instanceof Response) {
-                LOGGER.info("{} --> {} message: {}", remote.getPort(), WebSocketServer.LOCAL_ADDRESS.getPort(), object.toString());
+                LOGGER.info("response from server, response: {}", object.toString());
+                this.response = (Response) object;
+                ctx.close();
             } else if (object instanceof Request) {
-                LOGGER.warn("Test client don't need to receive request");
+                LOGGER.warn("Test client don't need to receive request, request: {}", object);
                 ctx.close();
             }
         }
@@ -105,6 +118,7 @@ public class WebSocketTestClientHandler extends SimpleChannelInboundHandler<Obje
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
         LOGGER.error(cause.getMessage());
+        cause.printStackTrace();
         if (!handshakeFuture.isDone()) {
             handshakeFuture.setFailure(cause);
         }

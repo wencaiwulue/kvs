@@ -18,13 +18,14 @@ import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import rpc.model.requestresponse.Request;
+import rpc.model.requestresponse.Response;
 import rpc.netty.config.Constant;
 
 import java.net.InetSocketAddress;
 import java.net.URI;
 
 public class NettyClientTest {
-    public static void main(InetSocketAddress address, Request request) throws Exception {
+    public static Response send(InetSocketAddress address, Request request) throws Exception {
         String url = "wss://" + address.getHostName() + ":" + address.getPort() + "/";
         URI uri = new URI(url);
         SslContext sslCtx = SslContextBuilder.forClient().trustManager(InsecureTrustManagerFactory.INSTANCE).build();
@@ -35,7 +36,7 @@ public class NettyClientTest {
             httpHeaders.add("localhost", "127.0.0.1");
             httpHeaders.add("localport", 8888);
             WebSocketClientHandshaker handshake = WebSocketClientHandshakerFactory.newHandshaker(uri, WebSocketVersion.V13, Constant.WEBSOCKET_PROTOCOL, true, httpHeaders);
-            WebSocketTestClientHandler handler = new WebSocketTestClientHandler(handshake, new InetSocketAddress(uri.getHost(), uri.getPort()));
+            WebSocketTestClientHandler handler = new WebSocketTestClientHandler(handshake);
 
             Bootstrap bootstrap = new Bootstrap();
             bootstrap
@@ -54,12 +55,13 @@ public class NettyClientTest {
                                 }
                             });
 
-            Channel ch = bootstrap.connect(uri.getHost(), uri.getPort()).sync().channel();
+            Channel channel = bootstrap.connect(uri.getHost(), uri.getPort()).sync().channel();
             handler.getHandshakeFuture().sync();
             byte[] bytes = FSTUtil.getBinaryConf().asByteArray(request);
-            ch.writeAndFlush(new BinaryWebSocketFrame(Unpooled.wrappedBuffer(bytes)))
-                    .addListener(ChannelFutureListener.CLOSE);
-            ch.closeFuture().sync();
+            channel.writeAndFlush(new BinaryWebSocketFrame(Unpooled.wrappedBuffer(bytes)))
+                    .addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
+            channel.closeFuture().sync();
+            return handler.getResponse();
         } finally {
             group.shutdownGracefully();
         }

@@ -8,6 +8,7 @@ import lombok.ToString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import raft.LogEntry;
+import raft.NodeAddress;
 import util.FSTUtil;
 
 import java.nio.file.Path;
@@ -33,30 +34,65 @@ public class LogDB {
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Lock readLock = this.lock.readLock();
     private final Lock writeLock = this.lock.writeLock();
+    // key for storage currentTerm and lastVoteFor
+    private final byte[] CURRENT_TERM = "CURRENT_TERM".getBytes();
+    private final byte[] LAST_VOTE_FOR = "LAST_VOTE_FOR".getBytes();
+
 
     public LogDB(Path dir) {
         this.engine = new RocksDBStorage(dir);
     }
 
 
-    public Object get(String key) {
-        return this.engine.get(key.getBytes());
+    public LogEntry get(long key) {
+        byte[] bytes = this.engine.get(String.valueOf(key).getBytes());
+        if (bytes == null) {
+            return null;
+        }
+        return (LogEntry) FSTUtil.getBinaryConf().asObject(bytes);
     }
+
+    //----------for storage currentTerm and lastVoteFor info start-------------
+    public int getCurrentTerm() {
+        byte[] bytes = this.engine.get(CURRENT_TERM);
+        if (bytes == null || bytes.length == 0) {
+            return 0;
+        }
+        return (int) FSTUtil.getBinaryConf().asObject(bytes);
+    }
+
+    public void setCurrentTerm(int currentTerm) {
+        this.engine.set(CURRENT_TERM, FSTUtil.getBinaryConf().asByteArray(currentTerm));
+    }
+
+    public NodeAddress getLastVoteFor() {
+        byte[] bytes = this.engine.get(LAST_VOTE_FOR);
+        if (bytes == null || bytes.length == 0) {
+            return null;
+        }
+        return (NodeAddress) FSTUtil.getBinaryConf().asObject(bytes);
+    }
+
+    public void setLastVoteFor(NodeAddress lastVoteFor) {
+        byte[] array = FSTUtil.getBinaryConf().asByteArray(lastVoteFor);
+        this.engine.set(LAST_VOTE_FOR, array);
+    }
+    //----------for storage currentTerm and lastVoteFor info end-------------
 
     public void save(List<LogEntry> logs) {
         for (LogEntry entry : logs) {
-            this.set(String.valueOf(entry.getIndex()), entry);
+            this.set(entry.getIndex(), entry);
         }
     }
 
-    public void set(String key, Object value) {
-        if (key == null || value == null) {
+    public void set(long index, LogEntry logEntry) {
+        if (logEntry == null) {
             return;
         }
-        this.engine.set(key.getBytes(), FSTUtil.getJsonConf().asByteArray(value));
+        this.engine.set(String.valueOf(index).getBytes(), FSTUtil.getBinaryConf().asByteArray(logEntry));
     }
 
-    public void remove(String key) {
-        this.engine.remove(key.getBytes());
+    public void remove(long key) {
+        this.engine.remove(String.valueOf(key).getBytes());
     }
 }

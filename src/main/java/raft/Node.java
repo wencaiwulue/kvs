@@ -63,6 +63,7 @@ public class Node implements INode {
     private volatile long nextElectTime = this.nextElectTime() + TimeUnit.SECONDS.toMillis(5);
     private volatile long nextHeartbeatTime /*= System.currentTimeMillis() + this.heartBeatRate*/;
 
+    // persistent storage currentTerm and lastVoteFor
     private volatile int currentTerm = 0;
     // current term whether voted or not
     private volatile NodeAddress lastVoteFor;
@@ -88,6 +89,10 @@ public class Node implements INode {
         this.db = new DB(Config.DB_DIR);
         this.logdb = new LogDB(Config.LOG_DIR);
         this.nextIndex = this.logdb.getLastLogIndex() + 1;
+
+        // read from persistent storage, write before return result to client
+        this.currentTerm = this.logdb.getCurrentTerm();
+        this.lastVoteFor = this.logdb.getLastVoteFor();
     }
 
     {
@@ -262,6 +267,10 @@ public class Node implements INode {
         if (response != null) {
             response.setRequestId(request.getRequestId());
         }
+
+        // write before return result to client, read while init node
+        this.logdb.setCurrentTerm(this.currentTerm);
+        this.logdb.setLastVoteFor(this.lastVoteFor);
         return response;
     }
 

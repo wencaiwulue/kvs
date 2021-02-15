@@ -55,6 +55,7 @@ public class CURDProcessor implements Processor {
 
         if (CURDOperation.get.equals(request.getOperation())) { // if it's get operation, get data and return
             Object val = node.getDb().get(request.getKey()[0]);
+            LOGGER.info("get key: {} from db and value: {}", request.getKey(), val);
             return new CURDResponse(true, new Object[]{val});
         } else if (CURDOperation.mget.equals(request.getOperation())) {
             Object[] values = new Object[request.getKey().length];
@@ -126,7 +127,7 @@ public class CURDProcessor implements Processor {
 
             if (ai.get() >= (node.getAllNodeAddresses().size() / 2 + 1)) { // more than half peer already write to log
                 StateMachine.apply(logEntries, node);
-                LOGGER.warn("AppendEntries received most peer response, applying data to state machine");
+                LOGGER.info("AppendEntries received most peer response, applying data to state machine");
                 return new CURDResponse(true, null);
             } else {
                 LOGGER.warn("AppendEntries not receive most peer response");

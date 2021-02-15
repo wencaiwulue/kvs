@@ -49,7 +49,7 @@ public class StateMachine {
         for (Service service : services) {
             if (service.supports(entry.getOperation())) {
                 service.service(node, entry);
-                node.getLogdb().remove(String.valueOf(entry.getIndex()));
+                node.getLogdb().remove(entry.getIndex());
                 return;
             }
         }

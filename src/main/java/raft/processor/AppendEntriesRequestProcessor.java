@@ -50,8 +50,13 @@ public class AppendEntriesRequestProcessor implements Processor {
                             if (size > 0) {
                                 if (size < 100) {
                                     List<LogEntry> logEntryList = new ArrayList<>();
-                                    for (long i = node.getCommittedIndex(); i < request.getCommittedIndex(); i++) {
-                                        logEntryList.add((LogEntry) node.getLogdb().get(String.valueOf(i)));
+                                    for (long i = node.getCommittedIndex() + 1; i <= request.getCommittedIndex(); i++) {
+                                        LogEntry logEntry = node.getLogdb().get(i);
+                                        if (logEntry == null) {
+                                            LOGGER.warn("index: {} not found log at node: {}", i, node.getLocalAddress().getSocketAddress().getPort());
+                                        } else {
+                                            logEntryList.add(logEntry);
+                                        }
                                     }
                                     StateMachine.apply(logEntryList, node);
                                 } else {
