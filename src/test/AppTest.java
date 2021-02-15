@@ -23,46 +23,46 @@ class AppTest {
 
     @Test
     void addPeer1And2And3() throws Exception {
-        NettyClientTest.send(p8001, new AddPeerRequest(new NodeAddress(p8002)));
-        NettyClientTest.send(p8002, new AddPeerRequest(new NodeAddress(p8001)));
-        NettyClientTest.send(p8001, new AddPeerRequest(new NodeAddress(p8003)));
+        NettyClientTest.sendAsync(p8001, new AddPeerRequest(new NodeAddress(p8002)));
+        NettyClientTest.sendAsync(p8002, new AddPeerRequest(new NodeAddress(p8001)));
+        NettyClientTest.sendAsync(p8001, new AddPeerRequest(new NodeAddress(p8003)));
     }
 
     @Test
     void addPeer1And2() throws Exception {
-        NettyClientTest.send(p8001, new AddPeerRequest(new NodeAddress(p8002)));
-        NettyClientTest.send(p8002, new AddPeerRequest(new NodeAddress(p8001)));
+        NettyClientTest.sendAsync(p8001, new AddPeerRequest(new NodeAddress(p8002)));
+        NettyClientTest.sendAsync(p8002, new AddPeerRequest(new NodeAddress(p8001)));
     }
 
     @Test
     void addPeer3() throws Exception {
-        NettyClientTest.send(p8002, new AddPeerRequest(new NodeAddress(p8003)));
+        NettyClientTest.sendAsync(p8002, new AddPeerRequest(new NodeAddress(p8003)));
     }
 
     @Test
     void addPeer4() throws Exception {
-        NettyClientTest.send(p8002, new AddPeerRequest(new NodeAddress(p8004)));
+        NettyClientTest.sendAsync(p8002, new AddPeerRequest(new NodeAddress(p8004)));
     }
 
     @Test
     void addPeer5() throws Exception {
-        NettyClientTest.send(p8001, new AddPeerRequest(new NodeAddress(p8005)));
+        NettyClientTest.sendAsync(p8001, new AddPeerRequest(new NodeAddress(p8005)));
     }
 
     @Test
     void removePeer1() throws Exception {
-        NettyClientTest.send(p8001, new RemovePeerRequest(new NodeAddress(p8001)));
+        NettyClientTest.sendAsync(p8001, new RemovePeerRequest(new NodeAddress(p8001)));
     }
 
     @Test
     void addData() throws Exception {
-        Response res = NettyClientTest.send(p8001, new CURDKVRequest(CURDOperation.set, new String[]{"a"}, new Object[]{2}));
+        Response res = NettyClientTest.sendSync(p8003, new CURDKVRequest(CURDOperation.set, new String[]{"a"}, new Object[]{2}));
         System.out.println(((CURDResponse) res).success);
     }
 
     @Test
     void getData() throws Exception {
-        Response res = NettyClientTest.send(p8002, new CURDKVRequest(CURDOperation.get, new String[]{"a"}, null));
+        Response res = NettyClientTest.sendSync(p8002, new CURDKVRequest(CURDOperation.get, new String[]{"a"}, null));
         System.out.println(((CURDResponse) res).value[0]);
     }
 

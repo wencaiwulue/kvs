@@ -53,13 +53,7 @@ public class WebSocketTestClientHandler extends SimpleChannelInboundHandler<Obje
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
-        LOGGER.info("WebSocket Client disconnected!");
-        RpcClient.getConnection()
-                .entrySet()
-                .stream()
-                .filter(e -> e.getValue() == ctx.channel())
-                .findFirst()
-                .ifPresent(entry -> LOGGER.info("with server: " + entry.getKey().toString()));
+//        LOGGER.info("WebSocket Client disconnected!");
     }
 
     @Override
@@ -68,7 +62,7 @@ public class WebSocketTestClientHandler extends SimpleChannelInboundHandler<Obje
         if (!handShaker.isHandshakeComplete()) {
             try {
                 handShaker.finishHandshake(ch, (FullHttpResponse) msg);
-                LOGGER.info("WebSocket Client connected!");
+//                LOGGER.info("WebSocket Client connected!");
                 handshakeFuture.setSuccess();
             } catch (WebSocketHandshakeException e) {
                 LOGGER.error("WebSocket Client failed to connect");
@@ -103,9 +97,9 @@ public class WebSocketTestClientHandler extends SimpleChannelInboundHandler<Obje
             byte[] bytes = new byte[buffer.capacity()];
             buffer.readBytes(bytes);
             Object object = FSTUtil.getBinaryConf().asObject(bytes);
-            LOGGER.info("message from server, message: {}", object);
+//            LOGGER.info("message from server, message: {}", object);
             if (object instanceof Response) {
-                LOGGER.info("response from server, response: {}", object.toString());
+//                LOGGER.info("response from server, response: {}", object.toString());
                 this.response = (Response) object;
                 ctx.close();
             } else if (object instanceof Request) {

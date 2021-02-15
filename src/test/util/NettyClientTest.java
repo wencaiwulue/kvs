@@ -25,7 +25,16 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 
 public class NettyClientTest {
-    public static Response send(InetSocketAddress address, Request request) throws Exception {
+    public static void sendAsync(InetSocketAddress address, Request request) throws Exception {
+        send(address, request, false);
+    }
+
+    public static Response sendSync(InetSocketAddress address, Request request) throws Exception {
+        return send(address, request, true);
+    }
+
+
+    private static Response send(InetSocketAddress address, Request request, boolean synchronize) throws Exception {
         String url = "wss://" + address.getHostName() + ":" + address.getPort() + "/";
         URI uri = new URI(url);
         SslContext sslCtx = SslContextBuilder.forClient().trustManager(InsecureTrustManagerFactory.INSTANCE).build();
@@ -59,7 +68,7 @@ public class NettyClientTest {
             handler.getHandshakeFuture().sync();
             byte[] bytes = FSTUtil.getBinaryConf().asByteArray(request);
             channel.writeAndFlush(new BinaryWebSocketFrame(Unpooled.wrappedBuffer(bytes)))
-                    .addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
+                    .addListener(synchronize ? ChannelFutureListener.CLOSE_ON_FAILURE : ChannelFutureListener.CLOSE);
             channel.closeFuture().sync();
             return handler.getResponse();
         } finally {

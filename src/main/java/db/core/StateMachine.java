@@ -1,6 +1,10 @@
 package db.core;
 
 import db.operationservice.*;
+import db.operationservice.impl.ExpireOperationService;
+import db.operationservice.impl.GetOperationService;
+import db.operationservice.impl.RemoveOperationService;
+import db.operationservice.impl.SetOperationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import raft.LogEntry;

@@ -1,5 +1,6 @@
-package db.operationservice;
+package db.operationservice.impl;
 
+import db.operationservice.Service;
 import raft.LogEntry;
 import raft.Node;
 import raft.enums.CURDOperation;
