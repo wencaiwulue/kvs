@@ -29,15 +29,14 @@ public class LogDB {
 
     private final StorageEngine<byte[], byte[]> engine;
     private volatile int lastLogIndex;
-    private volatile int lastLogTerm;
 
-    private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private final Lock readLock = this.lock.readLock();
-    private final Lock writeLock = this.lock.writeLock();
     // key for storage currentTerm and lastVoteFor
     private final byte[] CURRENT_TERM = "CURRENT_TERM".getBytes();
     private final byte[] LAST_VOTE_FOR = "LAST_VOTE_FOR".getBytes();
 
+    private final ReadWriteLock lock = new ReentrantReadWriteLock();
+    private final Lock readLock = this.lock.readLock();
+    private final Lock writeLock = this.lock.writeLock();
 
     public LogDB(Path dir) {
         this.engine = new RocksDBStorage(dir);
@@ -50,6 +49,14 @@ public class LogDB {
             return null;
         }
         return (LogEntry) FSTUtil.getBinaryConf().asObject(bytes);
+    }
+
+    public int getLastLogTerm() {
+        LogEntry logEntry = this.get(this.lastLogIndex);
+        if (logEntry == null) {
+            return 0;
+        }
+        return logEntry.getTerm();
     }
 
     //----------for storage currentTerm and lastVoteFor info start-------------

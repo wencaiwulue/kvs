@@ -26,8 +26,10 @@ import util.ThreadUtil;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -67,11 +69,12 @@ public class Node implements INode {
 
     private volatile long committedIndex = 0;
     private AtomicLong lastAppliedIndex = new AtomicLong(0);
-    private volatile List<Integer> nextIndex; // (Reinitialized after election)
-    private volatile List<Integer> matchIndex;// (Reinitialized after election)
-
+    // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
+    private volatile Map<NodeAddress, Integer> nextIndex; // Reinitialized after election
+    // for each server, index of highest log entry known to be replicated on server
+    private volatile Map<NodeAddress, Integer> matchIndex;// Reinitialized after election
     // persistent storage currentTerm and lastVoteFor
-    private volatile int currentTerm = 0;
+    private volatile int currentTerm;
     // current term whether voted or not
     private volatile NodeAddress lastVoteFor;
 
@@ -97,9 +100,9 @@ public class Node implements INode {
         this.allNodeAddresses = allNodeAddresses;
         this.db = new DB(Config.DB_DIR);
         this.logdb = new LogDB(Config.LOG_DIR);
-        this.nextIndex = new ArrayList<>();
-        this.nextIndex.add(this.logdb.getLastLogIndex() + 1);
-        this.matchIndex = new ArrayList<>();
+        this.nextIndex = new HashMap<>();
+        this.nextIndex.put(this.localAddress, this.logdb.getLastLogIndex() + 1);
+        this.matchIndex = new HashMap<>();
 
         // read from persistent storage, write before return result to client
         this.currentTerm = this.logdb.getCurrentTerm();
@@ -240,6 +243,9 @@ public class Node implements INode {
                     this.allNodeAddressExcludeMe().forEach(e -> RpcClient.doRequestAsync(e, new SynchronizeStateRequest(this.getAllNodeAddresses()), (res) -> {
                     }));
                 });
+                // Reinitialized after election
+                this.nextIndex.clear();
+                this.matchIndex.clear();
             } else {
                 LOGGER.info("Elect failed, expect ticket is {}, but received {}", mostTicketNum, ticket.get());
             }
