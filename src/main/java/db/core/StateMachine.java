@@ -37,11 +37,16 @@ public class StateMachine {
             writeLogToDB(node, entry);
         }
         // push commitIndex
-        node.setCommittedIndex(entries.get(entries.size() - 1).getIndex());
+        long lastLogIndex = node.getLogEntries().getLastLogIndex();
+        node.setCommittedIndex(lastLogIndex);
+        node.setLastAppliedIndex(lastLogIndex);
+
         if (node.isLeader()) {
             // notify peer to apply log to statemachine
-            AppendEntriesRequest request = new AppendEntriesRequest(node.getCurrentTerm(), node.getLeaderAddress(), node.getLogEntries().getLastLogIndex(), node.getLogEntries().getLastLogTerm(), Collections.emptyList(), node.getCommittedIndex());
+            AppendEntriesRequest request = new AppendEntriesRequest(node.getCurrentTerm(), node.getLeaderAddress(), lastLogIndex, node.getLogEntries().getLastLogTerm(), Collections.emptyList(), node.getCommittedIndex());
             for (NodeAddress remote : node.allNodeAddressExcludeMe()) {
+                node.getMatchIndex().put(remote, lastLogIndex);
+                node.getNextIndex().put(remote, lastLogIndex + 1);
                 RpcClient.doRequestAsync(remote, request, null);
             }
         }

@@ -267,7 +267,6 @@ public class Node implements INode {
             LOGGER.info("Elect spent time: {}ms", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
             this.writeLock.unlock();
         }
-
     }
 
     public boolean isLeader() {

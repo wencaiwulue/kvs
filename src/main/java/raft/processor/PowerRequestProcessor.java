@@ -27,6 +27,7 @@ public class PowerRequestProcessor implements Processor {
             }
             Runtime.getRuntime().exit(0); // power off
         }
+        // todo synchronize log
         return new PowerResponse(true);
     }
 }

@@ -69,7 +69,7 @@ public class AppendEntriesRequestProcessor implements Processor {
                                     }
                                     StateMachine.apply(logEntryList, node);
                                 } else {
-                                    // out of date too much, needs to install snapshot for synchronizing data
+                                    // out of date too much, needs to install snapshot for synchronizing log
                                     return new ErrorResponse();
                                 }
                             }

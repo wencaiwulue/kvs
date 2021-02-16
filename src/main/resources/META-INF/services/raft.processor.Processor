@@ -4,7 +4,6 @@ raft.processor.PowerRequestProcessor
 raft.processor.CURDProcessor
 raft.processor.DownloadFileRequestProcessor
 raft.processor.InstallSnapshotRequestProcessor
-raft.processor.PowerRequestProcessor
 raft.processor.RemovePeerRequestProcessor
 raft.processor.VoteRequestProcessor
 raft.processor.SynchronizeNodeStateProcessor
