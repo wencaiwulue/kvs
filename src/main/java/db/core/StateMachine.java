@@ -28,7 +28,7 @@ public class StateMachine {
 
     /*
      * 发送心跳包，告诉 follower apply log
-     * issue: if network split occurs between after leader apply log to db and notify peer to apply log to db
+     * issue: if network split occurs between after leader apply log to db and notify peer to apply log to statemachine
      * how to avoid this issue ?
      * */
     public static void apply(List<LogEntry> entries, Node node) {
@@ -39,11 +39,10 @@ public class StateMachine {
         // push commitIndex
         node.setCommittedIndex(entries.get(entries.size() - 1).getIndex());
         if (node.isLeader()) {
-            // notify peer to apply log to db
-            AppendEntriesRequest request = new AppendEntriesRequest(node.getCurrentTerm(), node.getLeaderAddress(), node.getLogdb().getLastLogIndex(), node.getLogdb().getLastLogTerm(), Collections.emptyList(), node.getCommittedIndex());
+            // notify peer to apply log to statemachine
+            AppendEntriesRequest request = new AppendEntriesRequest(node.getCurrentTerm(), node.getLeaderAddress(), node.getLogEntries().getLastLogIndex(), node.getLogEntries().getLastLogTerm(), Collections.emptyList(), node.getCommittedIndex());
             for (NodeAddress remote : node.allNodeAddressExcludeMe()) {
-                RpcClient.doRequestAsync(remote, request, e -> {
-                });
+                RpcClient.doRequestAsync(remote, request, null);
             }
         }
     }
@@ -53,7 +52,6 @@ public class StateMachine {
         for (Service service : services) {
             if (service.supports(entry.getOperation())) {
                 service.service(node, entry);
-                node.getLogdb().remove(entry.getIndex());
                 return;
             }
         }

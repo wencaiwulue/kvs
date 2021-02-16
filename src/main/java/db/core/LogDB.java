@@ -28,7 +28,8 @@ public class LogDB {
     private static final Logger LOG = LoggerFactory.getLogger(LogDB.class);
 
     private final StorageEngine<byte[], byte[]> engine;
-    private volatile int lastLogIndex;
+    private volatile long lastLogIndex;
+    private final byte[] LAST_LOG_INDEX = "LAST_LOG_INDEX".getBytes();
 
     // key for storage currentTerm and lastVoteFor
     private final byte[] CURRENT_TERM = "CURRENT_TERM".getBytes();
@@ -40,6 +41,7 @@ public class LogDB {
 
     public LogDB(Path dir) {
         this.engine = new RocksDBStorage(dir);
+        this.lastLogIndex = this.initLastLogIndex();
     }
 
 
@@ -84,7 +86,20 @@ public class LogDB {
         byte[] array = FSTUtil.getBinaryConf().asByteArray(lastVoteFor);
         this.engine.set(LAST_VOTE_FOR, array);
     }
+
     //----------for storage currentTerm and lastVoteFor info end-------------
+    private long initLastLogIndex() {
+        byte[] bytes = this.engine.get(LAST_LOG_INDEX);
+        if (bytes == null || bytes.length == 0) {
+            return 0;
+        }
+        return (long) FSTUtil.getBinaryConf().asObject(bytes);
+    }
+
+    public void saveLastLogIndex(long index) {
+        byte[] array = FSTUtil.getBinaryConf().asByteArray(index);
+        this.engine.set(LAST_LOG_INDEX, array);
+    }
 
     public void save(List<LogEntry> logs) {
         for (LogEntry entry : logs) {
@@ -97,6 +112,8 @@ public class LogDB {
             return;
         }
         this.engine.set(String.valueOf(index).getBytes(), FSTUtil.getBinaryConf().asByteArray(logEntry));
+        this.lastLogIndex = index;
+        this.saveLastLogIndex(this.lastLogIndex);
     }
 
     public void remove(long key) {

@@ -74,15 +74,14 @@ public class CURDProcessor implements Processor {
             LOGGER.info("Leader receive CURD request");
 
             List<LogEntry> logEntries = new ArrayList<>(request.getKey().length);
-            int lastValue = node.getLogdb().getLastLogIndex();
+            long lastValue = node.getLogEntries().getLastLogIndex();
             for (int i = 0; i < request.getKey().length; i++) {
                 lastValue += 1;
                 LogEntry logEntry = new LogEntry(lastValue, node.getCurrentTerm(), request.getOperation(), request.getKey()[i], request.getValue()[i]);
                 logEntries.add(logEntry);
             }
-            node.getLogdb().setLastLogIndex(lastValue);
-            // leader add log
-            node.getLogdb().save(logEntries);
+            // leader append log
+            node.getLogEntries().save(logEntries);
 
             AtomicInteger ai = new AtomicInteger(1);
             int size = node.allNodeAddressExcludeMe().size();
@@ -110,8 +109,9 @@ public class CURDProcessor implements Processor {
                         latch.countDown();
                     }
                 };
-                AppendEntriesRequest entriesRequest = new AppendEntriesRequest(node.getCurrentTerm(), node.getLocalAddress(), node.getLastAppliedIndex().intValue(), node.getLogdb().getLastLogTerm(), logEntries, node.getCommittedIndex());
+                AppendEntriesRequest entriesRequest = new AppendEntriesRequest(node.getCurrentTerm(), node.getLocalAddress(), node.getLastAppliedIndex(), node.getLogEntries().getLastLogTerm(), logEntries, node.getCommittedIndex());
                 requestIds.add(entriesRequest.getRequestId());
+                // First round, leader notify peers to append log
                 RpcClient.doRequestAsync(peerAddress, entriesRequest, c);
             }
             try {
@@ -128,6 +128,7 @@ public class CURDProcessor implements Processor {
             }
 
             if (ai.get() >= (node.getAllNodeAddresses().size() / 2 + 1)) { // more than half peer already write to log
+                // Second round, leader notify peers to apply log to statemachine
                 StateMachine.apply(logEntries, node);
                 LOGGER.info("AppendEntries received most peer response, applying data to state machine");
                 return new CURDResponse(true, null);

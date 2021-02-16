@@ -29,9 +29,9 @@ public class VoteRequestProcessor implements Processor {
             VoteRequest request = (VoteRequest) req;
             LOGGER.error("{} --> {}, vote request info: {}", request.getCandidateId().getSocketAddress().getPort(), node.getLocalAddress().getSocketAddress().getPort(), request);
             int i = Long.compare(request.getTerm(), node.getCurrentTerm());
-            int j = Long.compare(request.getLastLogTerm(), node.getLogdb().getLastLogTerm());
+            int j = Long.compare(request.getLastLogTerm(), node.getLogEntries().getLastLogTerm());
             if (j == 0) {
-                j = Long.compare(request.getLastLogIndex(), node.getLogdb().getLastLogIndex());
+                j = Long.compare(request.getLastLogIndex(), node.getLogEntries().getLastLogIndex());
             }
 
             // if request term is bigger than current node term

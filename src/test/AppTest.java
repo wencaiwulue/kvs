@@ -1,3 +1,4 @@
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import raft.NodeAddress;
 import raft.enums.CURDOperation;
@@ -56,7 +57,7 @@ class AppTest {
 
     @Test
     void addData() throws Exception {
-        Response res = NettyClientTest.sendSync(p8001, new CURDKVRequest(CURDOperation.set, new String[]{"a"}, new Object[]{5}));
+        Response res = NettyClientTest.sendSync(p8001, new CURDKVRequest(CURDOperation.set, new String[]{"a"}, new Object[]{10}));
         System.out.println(((CURDResponse) res).success);
     }
 
@@ -64,6 +65,14 @@ class AppTest {
     void getData() throws Exception {
         Response res = NettyClientTest.sendSync(p8003, new CURDKVRequest(CURDOperation.get, new String[]{"a"}, null));
         System.out.println(((CURDResponse) res).value[0]);
+    }
+
+    @Test
+    void testAddAndGetData() throws Exception {
+        int value = 10;
+        NettyClientTest.sendSync(p8001, new CURDKVRequest(CURDOperation.set, new String[]{"a"}, new Object[]{value}));
+        Response res = NettyClientTest.sendSync(p8003, new CURDKVRequest(CURDOperation.get, new String[]{"a"}, null));
+        Assertions.assertEquals(value, ((CURDResponse) res).value[0]);
     }
 
 }

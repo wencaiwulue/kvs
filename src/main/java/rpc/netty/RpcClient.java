@@ -104,7 +104,9 @@ public class RpcClient {
         SocketRequest socketRequest = new SocketRequest(remoteAddress.getSocketAddress(), request);
         try {
             REQUEST_TASK.put(socketRequest);
-            RESPONSE_CONSUMER.put(request.getRequestId(), nextTodo);
+            if (nextTodo != null) {
+                RESPONSE_CONSUMER.put(request.getRequestId(), nextTodo);
+            }
         } catch (InterruptedException e) {
             LOGGER.error("add async request error, info: {}", e.getMessage());
         }

@@ -13,6 +13,7 @@ import raft.config.Constant;
 import raft.enums.Role;
 import raft.processor.Processor;
 import rpc.model.requestresponse.AppendEntriesRequest;
+import rpc.model.requestresponse.AppendEntriesResponse;
 import rpc.model.requestresponse.ErrorResponse;
 import rpc.model.requestresponse.InstallSnapshotRequest;
 import rpc.model.requestresponse.InstallSnapshotResponse;
@@ -37,7 +38,6 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -63,16 +63,16 @@ public class Node implements INode {
     private Set<NodeAddress> allNodeAddresses;
 
     private DB db;
-    private LogDB logdb;
+    private LogDB logEntries;
     // default role is follower
     private Role role = Role.FOLLOWER;
 
     private volatile long committedIndex = 0;
-    private AtomicLong lastAppliedIndex = new AtomicLong(0);
+    private volatile long lastAppliedIndex = 0;
     // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
-    private volatile Map<NodeAddress, Integer> nextIndex; // Reinitialized after election
+    private volatile Map<NodeAddress, Long> nextIndex; // Reinitialized after election
     // for each server, index of highest log entry known to be replicated on server
-    private volatile Map<NodeAddress, Integer> matchIndex;// Reinitialized after election
+    private volatile Map<NodeAddress, Long> matchIndex;// Reinitialized after election
     // persistent storage currentTerm and lastVoteFor
     private volatile int currentTerm;
     // current term whether voted or not
@@ -99,14 +99,14 @@ public class Node implements INode {
         this.localAddress = localAddress;
         this.allNodeAddresses = allNodeAddresses;
         this.db = new DB(Config.DB_DIR);
-        this.logdb = new LogDB(Config.LOG_DIR);
+        this.logEntries = new LogDB(Config.LOG_DIR);
         this.nextIndex = new HashMap<>();
-        this.nextIndex.put(this.localAddress, this.logdb.getLastLogIndex() + 1);
+        this.nextIndex.put(this.localAddress, this.logEntries.getLastLogIndex() + 1);
         this.matchIndex = new HashMap<>();
 
         // read from persistent storage, write before return result to client
-        this.currentTerm = this.logdb.getCurrentTerm();
-        this.lastVoteFor = this.logdb.getLastVoteFor();
+        this.currentTerm = this.logEntries.getCurrentTerm();
+        this.lastVoteFor = this.logEntries.getLastVoteFor();
     }
 
     {
@@ -143,21 +143,27 @@ public class Node implements INode {
             // if current node role is leader, then needs to send heartbeat to other, tell them i am boss, i rule anything !!!
             if (isLeader()) {
                 for (NodeAddress remote : this.allNodeAddressExcludeMe()) {
-                    Consumer<Response> consumer = response -> {
-                        if (response != null) {
+                    Consumer<Response> consumer = res -> {
+                        if (res != null) {
                             LOGGER.info("{} --> {}, receive heartbeat response", remote.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort());
                         }
                         // install snapshot
-                        // todo 这里约定的是如果心跳包回复ErrorResponse, 说明是out的节点，需要安装更新
-                        if (response instanceof ErrorResponse) {
+                        // 这里约定的是如果心跳包回复ErrorResponse, 说明是out too much的节点，需要install snapshot
+                        if (res instanceof ErrorResponse) {
                             InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) RpcClient.doRequest(remote, new InstallSnapshotRequest(this.currentTerm, this.localAddress, 0, 0, 0, null, true));
                             if (snapshotResponse == null || snapshotResponse.getTerm() < this.currentTerm) {
                                 LOGGER.error("Install snapshot error, should retry or not ?");
                             }
+                        } else if (res instanceof AppendEntriesResponse) {
+                            AppendEntriesResponse response = (AppendEntriesResponse) res;
+                            if (response.getTerm() > this.currentTerm) {
+                                this.role = Role.FOLLOWER;
+                                this.currentTerm = response.getTerm();
+                            }
                         }
                     };
-                    int lastAppliedTerm = this.logdb.getLastLogTerm();
-                    AppendEntriesRequest request = new AppendEntriesRequest(this.currentTerm, this.localAddress, lastAppliedTerm, this.lastAppliedIndex.intValue(), Collections.emptyList(), this.committedIndex);
+                    int lastAppliedTerm = this.logEntries.getLastLogTerm();
+                    AppendEntriesRequest request = new AppendEntriesRequest(this.currentTerm, this.localAddress, this.lastAppliedIndex, lastAppliedTerm, Collections.emptyList(), this.committedIndex);
                     RpcClient.doRequestAsync(remote, request, consumer);
                 }
                 this.nextElectTime = this.nextElectTime();
@@ -182,7 +188,7 @@ public class Node implements INode {
         this.writeLock.lock();
         try {
             this.currentTerm++;
-            AtomicInteger ticket = new AtomicInteger(1);//先给自己投一票
+            AtomicInteger ticket = new AtomicInteger(1); // vote for self
             AtomicBoolean fail = new AtomicBoolean(false);
             int size = this.allNodeAddressExcludeMe().size();
             CountDownLatch latch = new CountDownLatch(size);
@@ -190,26 +196,33 @@ public class Node implements INode {
             for (NodeAddress addr : this.allNodeAddressExcludeMe()) {
                 Consumer<Response> consumer = res -> {
                     try {
-                        if (res != null) {
-                            VoteResponse response = (VoteResponse) res;
-                            LOGGER.info("{} --> {}, vote response: {}", addr.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort(), response.toString());
-                            if (this.role.equals(Role.CANDIDATE) && response.isVoteGranted() && response.getTerm() == this.currentTerm) {
-                                ticket.incrementAndGet();
-                            } else if (response.getTerm() > this.currentTerm) {
-                                this.role = Role.FOLLOWER;
-                                this.currentTerm = response.getTerm();
-                                fail.set(true);
-                            } else {
-                                LOGGER.error("{} --> {}, no vote response", addr.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort());
-                            }
+                        if (res == null) {
+                            LOGGER.error("{} --> {}, Vote response is null", addr.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort());
+                            return;
+                        }
+                        if (fail.get()) {
+                            LOGGER.warn("{} --> {}, Already failed", addr.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort());
+                            return;
+                        }
+
+                        VoteResponse response = (VoteResponse) res;
+                        LOGGER.info("{} --> {}, vote response: {}", addr.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort(), response.toString());
+                        if (response.getTerm() > this.currentTerm) {
+                            this.role = Role.FOLLOWER;
+                            this.currentTerm = response.getTerm();
+                            fail.set(true);
+                            return;
+                        }
+                        if (this.role.equals(Role.CANDIDATE) && response.isVoteGranted() && response.getTerm() == this.currentTerm) {
+                            ticket.incrementAndGet();
                         } else {
-                            LOGGER.error("{} --> {}, null vote response", addr.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort());
+                            LOGGER.error("{} --> {}, Not vote for me", addr.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort());
                         }
                     } finally {
                         latch.countDown();
                     }
                 };
-                VoteRequest voteRequest = new VoteRequest(this.currentTerm, this.localAddress, this.logdb.getLastLogIndex(), this.logdb.getLastLogTerm());
+                VoteRequest voteRequest = new VoteRequest(this.currentTerm, this.localAddress, this.logEntries.getLastLogIndex(), this.logEntries.getLastLogTerm());
                 requestIds.add(voteRequest.getRequestId());
                 RpcClient.doRequestAsync(addr, voteRequest, consumer);
             }
@@ -224,13 +237,14 @@ public class Node implements INode {
                     requestIds.forEach(e -> RpcClient.cancelRequest(e, mayInterruptIfRunning.get()));
                     LOGGER.error("elect timeout, cancel all task");
                 }
-            } catch (InterruptedException exception) {
+            } catch (InterruptedException ex) {
                 requestIds.forEach(e -> RpcClient.cancelRequest(e, true));
                 LOGGER.error("elect interrupted, cancel all task");
             }
             if (fail.getAcquire()) {
                 requestIds.forEach(e -> RpcClient.cancelRequest(e, true));
                 LOGGER.error("Elect failed, cancel all task");
+                return;
             }
             int mostTicketNum = (this.allNodeAddresses.size() / 2) + 1;
             if (ticket.getAcquire() >= mostTicketNum) {
@@ -240,8 +254,7 @@ public class Node implements INode {
                 this.nextHeartbeatTime = -1;
                 ThreadUtil.getThreadPool().submit(() -> {
                     this.heartbeatTask.run();
-                    this.allNodeAddressExcludeMe().forEach(e -> RpcClient.doRequestAsync(e, new SynchronizeStateRequest(this.getAllNodeAddresses()), (res) -> {
-                    }));
+                    this.allNodeAddressExcludeMe().forEach(e -> RpcClient.doRequestAsync(e, new SynchronizeStateRequest(this.getAllNodeAddresses()), null));
                 });
                 // Reinitialized after election
                 this.nextIndex.clear();
@@ -279,8 +292,8 @@ public class Node implements INode {
         }
 
         // write before return result to client, read while init node
-        this.logdb.setCurrentTerm(this.currentTerm);
-        this.logdb.setLastVoteFor(this.lastVoteFor);
+        this.logEntries.setCurrentTerm(this.currentTerm);
+        this.logEntries.setLastVoteFor(this.lastVoteFor);
         return response;
     }
 
