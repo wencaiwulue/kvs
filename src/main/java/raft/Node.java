@@ -172,10 +172,11 @@ public class Node implements INode {
                         LogEntry logEntry = this.logEntries.get(nextIndex - 1);
                         if (logEntry == null) {
                             LOGGER.error("Log entry is null");
-                            throw new NullPointerException("Log entry is null");
+//                            throw new NullPointerException("Log entry is null");
+                        } else {
+                            request.setPrevLogIndex(logEntry.getIndex());
+                            request.setPrevLogIndex(logEntry.getTerm());
                         }
-                        request.setPrevLogIndex(logEntry.getIndex());
-                        request.setPrevLogIndex(logEntry.getTerm());
                     }
                     request.setEntries(this.logEntries.getRange(nextIndex, this.logEntries.getLastLogIndex() + 1));
                     RpcClient.doRequestAsync(remote, request, consumer);

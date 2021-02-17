@@ -25,8 +25,8 @@ class AppTest {
     @Test
     void addPeer1And2And3() throws Exception {
         NettyClientTest.sendAsync(p8001, new AddPeerRequest(new NodeAddress(p8002)));
-        NettyClientTest.sendAsync(p8002, new AddPeerRequest(new NodeAddress(p8001)));
         NettyClientTest.sendAsync(p8001, new AddPeerRequest(new NodeAddress(p8003)));
+//        NettyClientTest.sendAsync(p8002, new AddPeerRequest(new NodeAddress(p8001)));
     }
 
     @Test
@@ -53,6 +53,11 @@ class AppTest {
     @Test
     void removePeer1() throws Exception {
         NettyClientTest.sendAsync(p8001, new RemovePeerRequest(new NodeAddress(p8001)));
+    }
+
+    @Test
+    void removePeer2() throws Exception {
+        NettyClientTest.sendAsync(p8004, new RemovePeerRequest(new NodeAddress(p8002)));
     }
 
     @Test

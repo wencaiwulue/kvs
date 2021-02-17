@@ -1,12 +1,15 @@
 package raft.processor;
 
+import db.core.storage.impl.MapStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import raft.Node;
 import raft.NodeAddress;
-import rpc.model.requestresponse.*;
+import rpc.model.requestresponse.RemovePeerRequest;
+import rpc.model.requestresponse.RemovePeerResponse;
+import rpc.model.requestresponse.Request;
+import rpc.model.requestresponse.Response;
 import rpc.netty.RpcClient;
-import util.ThreadUtil;
 
 /**
  * @author naison
@@ -24,31 +27,41 @@ public class RemovePeerRequestProcessor implements Processor {
     @Override
     public Response process(Request req, Node node) {
         RemovePeerRequest request = (RemovePeerRequest) req;
-        node.getAllNodeAddresses().remove(request.getPeer());
+
+        Runnable r = () -> {
+            node.getAllNodeAddresses().remove(request.getPeer());
+            // self receive removePeerRequest from leader, shutdown
+            if (node.getLocalAddress().equals(request.getPeer())) {
+                node.setStart(false);
+                if (node.getDb().getStorage() instanceof MapStorage) {
+                    ((MapStorage<byte[], byte[]>) node.getDb().getStorage()).writeDataToDisk();
+                }
+            }
+        };
 
         if (!node.isLeader()) {
             if (node.getLeaderAddress() == null) {
+                LOGGER.error("This should not happen");
                 return new RemovePeerResponse();
             } else {
+                // request from leader
                 if (node.getLeaderAddress().equals(request.getSender())) {
+                    r.run();
                     return new RemovePeerResponse();// exit 2
                 } else {
+                    // Redirect to leader
                     return RpcClient.doRequest(node.getLeaderAddress(), request);
                 }
             }
         } else {
             // leader will notify all node to remove peer,
             // each node receive leader command, will ask the remove peer to remove itself
-            request.setSender(node.getLeaderAddress());
+            request.setSender(node.getLocalAddress());
             for (NodeAddress nodeAddress : node.allNodeAddressExcludeMe()) {
-                RpcClient.doRequest(nodeAddress, request);
+                RpcClient.doRequestAsync(nodeAddress, request, null);
             }
-            PowerResponse response = (PowerResponse) RpcClient.doRequest(request.getPeer(), new PowerRequest(true, true));
-            if (response != null && response.isSuccess()) {
-                return new RemovePeerResponse();
-            } else {
-                return new ErrorResponse("remove peer failed, peer info: " + request.getPeer());
-            }
+            r.run();
+            return new RemovePeerResponse();
         }
     }
 }

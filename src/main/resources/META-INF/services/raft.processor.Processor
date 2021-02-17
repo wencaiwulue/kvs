@@ -1,6 +1,5 @@
 raft.processor.AddPeerRequestProcessor
 raft.processor.AppendEntriesRequestProcessor
-raft.processor.PowerRequestProcessor
 raft.processor.CURDProcessor
 raft.processor.DownloadFileRequestProcessor
 raft.processor.InstallSnapshotRequestProcessor

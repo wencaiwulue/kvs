@@ -5,6 +5,7 @@ import com.google.common.hash.Funnels;
 import db.core.pojo.ExpireKey;
 import db.core.storage.impl.RocksDBStorage;
 import db.core.storage.StorageEngine;
+import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import util.FSTUtil;
@@ -26,12 +27,13 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * @author naison
  * @since 4/1/2020 10:53
  */
+@Getter
 public class DB {
     private static final Logger LOGGER = LoggerFactory.getLogger(DB.class);
 
-    public final StorageEngine<byte[], byte[]> storage;
+    private final StorageEngine<byte[], byte[]> storage;
 
-    public final DelayQueue<ExpireKey> expireKeys;
+    private final DelayQueue<ExpireKey> expireKeys;
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Lock readLock = this.lock.readLock();

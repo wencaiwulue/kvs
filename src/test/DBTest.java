@@ -13,8 +13,7 @@ public class DBTest {
             db.set(String.valueOf(i), i, i, TimeUnit.MINUTES);
         }
         db.expireKey(String.valueOf(2), -1, TimeUnit.NANOSECONDS);
-        db.expireKeys.remove(new ExpireKey(100, TimeUnit.MINUTES, String.valueOf(3)));
-        System.out.println(db.expireKeys.size());
-
+        db.getExpireKeys().remove(new ExpireKey(100, TimeUnit.MINUTES, String.valueOf(3)));
+        System.out.println(db.getExpireKeys().size());
     }
 }

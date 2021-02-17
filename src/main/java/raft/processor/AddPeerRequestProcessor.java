@@ -2,11 +2,14 @@ package raft.processor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import raft.LogEntry;
 import raft.Node;
 import raft.NodeAddress;
 import rpc.model.requestresponse.*;
 import rpc.netty.RpcClient;
 import util.ThreadUtil;
+
+import java.util.List;
 
 /**
  * @author naison
@@ -42,13 +45,14 @@ public class AddPeerRequestProcessor implements Processor {
     public Response process(Request req, Node node) {
         AddPeerRequest request = (AddPeerRequest) req;
 
-        node.getAllNodeAddresses().add(request.getPeer());
-
         if (!node.isLeader()) {
             if (node.getLeaderAddress() == null) {
+                LOGGER.error("Not a cluster, just need to add to myself peer");
+                node.getAllNodeAddresses().add(request.getPeer());
                 return new AddPeerResponse();// exit 2
             } else {
                 if (node.getLeaderAddress().equals(request.getSender())) {
+                    node.getAllNodeAddresses().add(request.getPeer());
                     return new AddPeerResponse();// exit 3
                 } else {
                     return RpcClient.doRequest(node.getLeaderAddress(), request);
@@ -59,15 +63,34 @@ public class AddPeerRequestProcessor implements Processor {
             // each node receive leader command, will send
             request.sender = node.getLeaderAddress();
             for (NodeAddress nodeAddress : node.allNodeAddressExcludeMe()) {
-                ThreadUtil.getThreadPool().execute(() -> RpcClient.doRequest(nodeAddress, request));
+                RpcClient.doRequestAsync(nodeAddress, request, null);
             }
-            // means this node is just power up, need to synchronize data
-            PowerResponse response = (PowerResponse) RpcClient.doRequest(request.getPeer(), new PowerRequest(false, false));
-            if (response != null && response.isSuccess()) {
-                return new AddPeerResponse();
-            } else {
-                return new ErrorResponse("add peer failed, peer info: " + request.getPeer());
-            }
+            node.getAllNodeAddresses().add(request.getPeer());
+            // tell fresh bird to add all nodes
+            RpcClient.doRequestAsync(request.getPeer(), new SynchronizeStateRequest(node.getAllNodeAddresses()), null);
+            // need to replicate log
+            ThreadUtil.getThreadPool().submit(() -> {
+                List<LogEntry> entries = node.getLogEntries().getRange(1, node.getLogEntries().getLastLogIndex() + 1);
+                AppendEntriesRequest appendEntriesRequest = new AppendEntriesRequest(node.getCurrentTerm(), node.getLocalAddress(), 0, 0, entries, node.getCommittedIndex());
+                RpcClient.doRequestAsync(request.getPeer(), appendEntriesRequest, re -> {
+                    if (re instanceof AppendEntriesResponse) {
+                        if (!((AppendEntriesResponse) re).isSuccess()) {
+                            LOGGER.error("How to do ?");
+                        }
+                    } else if (re instanceof ErrorResponse) {
+                        // out of data to much
+                        InstallSnapshotRequest installSnapshotRequest = new InstallSnapshotRequest();
+                        RpcClient.doRequestAsync(request.getPeer(), installSnapshotRequest, r -> {
+                            if (r instanceof InstallSnapshotResponse) {
+                                if (((InstallSnapshotResponse) r).getTerm() == node.getCurrentTerm()) {
+                                    LOGGER.info("Replicate log successfully");
+                                }
+                            }
+                        });
+                    }
+                });
+            });
+            return new AddPeerResponse();
         }
 
     }
