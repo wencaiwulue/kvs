@@ -14,6 +14,7 @@ public class SynchronizeNodeStateProcessor implements Processor {
     @Override
     public Response process(Request req, Node node) {
         SynchronizeStateRequest request = (SynchronizeStateRequest) req;
+        node.setLeaderAddress(request.getLeaderId());
         node.getAllNodeAddresses().addAll(request.getPeers());
         return null;
     }

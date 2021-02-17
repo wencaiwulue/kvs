@@ -39,7 +39,6 @@ public class AppendEntriesRequestProcessor implements Processor {
             // push off elect
             node.setNextElectTime(node.nextElectTime());
             AppendEntriesRequest request = (AppendEntriesRequest) req;
-            node.setLeaderAddress(request.getLeaderId());
             // heartbeat
             if (CollectionUtil.isEmpty(request.getEntries())) {
                 LOGGER.info("{} --> {}, receive heartbeat, term: {}", request.getLeaderId().getPort(), node.getLocalAddress().getPort(), request.getTerm());

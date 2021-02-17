@@ -14,5 +14,6 @@ import java.util.Set;
 @Setter
 @Getter
 public class SynchronizeStateRequest extends Request {
+    private NodeAddress leaderId;
     private Set<NodeAddress> peers = Collections.emptySet();
 }

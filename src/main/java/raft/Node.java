@@ -4,6 +4,7 @@ import com.google.common.collect.Sets;
 import db.config.Config;
 import db.core.DB;
 import db.core.LogDB;
+import db.core.storage.impl.MapStorage;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
@@ -115,7 +116,7 @@ public class Node implements INode {
     }
 
     @Override
-    public void run() {
+    public void start() {
         this.electTask = () -> {
             if (!this.start) {
                 return;
@@ -188,6 +189,14 @@ public class Node implements INode {
         };
         ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(this.heartbeatTask, 0, Constant.HEARTBEAT_RATE.toMillis(), TimeUnit.MILLISECONDS);
         this.start = true;
+    }
+
+    @Override
+    public void shutdown() {
+        this.start = false;
+        if (this.db.getStorage() instanceof MapStorage) {
+            ((MapStorage<byte[], byte[]>) this.db.getStorage()).writeDataToDisk();
+        }
     }
 
     @SuppressWarnings("NonAtomicOperationOnVolatileField")
@@ -269,7 +278,7 @@ public class Node implements INode {
                 this.nextHeartbeatTime = -1;
                 ThreadUtil.getThreadPool().submit(() -> {
                     this.heartbeatTask.run();
-                    this.allNodeAddressExcludeMe().forEach(e -> RpcClient.doRequestAsync(e, new SynchronizeStateRequest(this.getAllNodeAddresses()), null));
+                    this.allNodeAddressExcludeMe().forEach(e -> RpcClient.doRequestAsync(e, new SynchronizeStateRequest(this.getLocalAddress(), this.getAllNodeAddresses()), null));
                 });
                 // Reinitialized after election
                 this.nextIndex.clear();

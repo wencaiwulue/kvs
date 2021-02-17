@@ -39,7 +39,7 @@ public final class WebSocketServer {
 
             Channel channel = bootstrap.bind(LOCAL_ADDRESS.getPort()).sync().channel();
             LOGGER.info("Server started on port(s): {} (websocket)", LOCAL_ADDRESS.getPort());
-            ThreadUtil.getThreadPool().execute(iNode);
+            ThreadUtil.getThreadPool().execute(iNode::start);
             channel.closeFuture().sync();
         } catch (CertificateException | InterruptedException | SSLException e) {
             LOGGER.error(e.getMessage());

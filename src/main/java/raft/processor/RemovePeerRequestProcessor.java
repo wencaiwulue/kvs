@@ -32,10 +32,7 @@ public class RemovePeerRequestProcessor implements Processor {
             node.getAllNodeAddresses().remove(request.getPeer());
             // self receive removePeerRequest from leader, shutdown
             if (node.getLocalAddress().equals(request.getPeer())) {
-                node.setStart(false);
-                if (node.getDb().getStorage() instanceof MapStorage) {
-                    ((MapStorage<byte[], byte[]>) node.getDb().getStorage()).writeDataToDisk();
-                }
+                node.shutdown();
             }
         };
 

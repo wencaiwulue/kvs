@@ -67,7 +67,7 @@ public class AddPeerRequestProcessor implements Processor {
             }
             node.getAllNodeAddresses().add(request.getPeer());
             // tell fresh bird to add all nodes
-            RpcClient.doRequestAsync(request.getPeer(), new SynchronizeStateRequest(node.getAllNodeAddresses()), null);
+            RpcClient.doRequestAsync(request.getPeer(), new SynchronizeStateRequest(node.getLocalAddress(), node.getAllNodeAddresses()), null);
             // need to replicate log
             ThreadUtil.getThreadPool().submit(() -> {
                 List<LogEntry> entries = node.getLogEntries().getRange(1, node.getLogEntries().getLastLogIndex() + 1);
