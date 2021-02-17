@@ -145,7 +145,7 @@ public class Node implements INode {
                 for (NodeAddress remote : this.allNodeAddressExcludeMe()) {
                     Consumer<Response> consumer = res -> {
                         if (res != null) {
-                            LOGGER.info("{} --> {}, receive heartbeat response", remote.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort());
+                            LOGGER.info("{} --> {}, receive heartbeat response", remote.getPort(), this.localAddress.getPort());
                         }
                         // install snapshot
                         // 这里约定的是如果心跳包回复ErrorResponse, 说明是out too much的节点，需要install snapshot
@@ -162,8 +162,22 @@ public class Node implements INode {
                             }
                         }
                     };
-                    int lastAppliedTerm = this.logEntries.getLastLogTerm();
-                    AppendEntriesRequest request = new AppendEntriesRequest(this.currentTerm, this.localAddress, this.lastAppliedIndex, lastAppliedTerm, Collections.emptyList(), this.committedIndex);
+
+                    AppendEntriesRequest request = new AppendEntriesRequest(this.currentTerm, this.localAddress, -1, -1, Collections.emptyList(), this.committedIndex);
+                    Long nextIndex = this.getNextIndex().getOrDefault(remote, 1L);
+                    if (nextIndex == this.logEntries.getLastLogIndex() + 1) {
+                        request.setPrevLogIndex(this.logEntries.getLastLogIndex());
+                        request.setPrevLogTerm(this.logEntries.getLastLogTerm());
+                    } else {
+                        LogEntry logEntry = this.logEntries.get(nextIndex - 1);
+                        if (logEntry == null) {
+                            LOGGER.error("Log entry is null");
+                            throw new NullPointerException("Log entry is null");
+                        }
+                        request.setPrevLogIndex(logEntry.getIndex());
+                        request.setPrevLogIndex(logEntry.getTerm());
+                    }
+                    request.setEntries(this.logEntries.getRange(nextIndex, this.logEntries.getLastLogIndex() + 1));
                     RpcClient.doRequestAsync(remote, request, consumer);
                 }
                 this.nextElectTime = this.nextElectTime();
@@ -197,16 +211,16 @@ public class Node implements INode {
                 Consumer<Response> consumer = res -> {
                     try {
                         if (res == null) {
-                            LOGGER.error("{} --> {}, Vote response is null", addr.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort());
+                            LOGGER.error("{} --> {}, Vote response is null", addr.getPort(), this.localAddress.getPort());
                             return;
                         }
                         if (fail.get()) {
-                            LOGGER.warn("{} --> {}, Already failed", addr.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort());
+                            LOGGER.warn("{} --> {}, Already failed", addr.getPort(), this.localAddress.getPort());
                             return;
                         }
 
                         VoteResponse response = (VoteResponse) res;
-                        LOGGER.info("{} --> {}, vote response: {}", addr.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort(), response.toString());
+                        LOGGER.info("{} --> {}, vote response: {}", addr.getPort(), this.localAddress.getPort(), response.toString());
                         if (response.getTerm() > this.currentTerm) {
                             this.role = Role.FOLLOWER;
                             this.currentTerm = response.getTerm();
@@ -216,7 +230,7 @@ public class Node implements INode {
                         if (this.role.equals(Role.CANDIDATE) && response.isVoteGranted() && response.getTerm() == this.currentTerm) {
                             ticket.incrementAndGet();
                         } else {
-                            LOGGER.error("{} --> {}, Not vote for me", addr.getSocketAddress().getPort(), this.localAddress.getSocketAddress().getPort());
+                            LOGGER.error("{} --> {}, Not vote for me", addr.getPort(), this.localAddress.getPort());
                         }
                     } finally {
                         latch.countDown();

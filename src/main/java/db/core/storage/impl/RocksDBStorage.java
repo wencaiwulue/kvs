@@ -80,6 +80,15 @@ public class RocksDBStorage implements StorageEngine<byte[], byte[]> {
     }
 
     @Override
+    public void removeRange(byte[] keyInclusive, byte[] keyExclusive) {
+        try {
+            rocksDB.deleteRange(keyInclusive, keyExclusive);
+        } catch (RocksDBException e) {
+            LOG.warn("remove range error: {}", e.getMessage());
+        }
+    }
+
+    @Override
     public Iterator<Map.Entry<byte[], byte[]>> iterator() {
         RocksIterator iterator = rocksDB.newIterator();
         return null;

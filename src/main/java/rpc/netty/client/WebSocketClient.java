@@ -20,7 +20,7 @@ import io.netty.handler.timeout.IdleStateHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import rpc.netty.config.Constant;
-import rpc.netty.server.HeartBeatHandler;
+import rpc.netty.server.HeartbeatHandler;
 import rpc.netty.server.WebSocketServer;
 
 import java.net.InetSocketAddress;
@@ -55,7 +55,7 @@ public final class WebSocketClient {
                                     pipeline.addLast(new WebSocket13FrameEncoder(true));
                                     pipeline.addLast(new WebSocket13FrameDecoder(false, true, 65536));
                                     pipeline.addLast(new IdleStateHandler(2, 3, 5, TimeUnit.SECONDS));
-                                    pipeline.addLast(new HeartBeatHandler());
+                                    pipeline.addLast(new HeartbeatHandler());
                                     DefaultHttpHeaders headers = new DefaultHttpHeaders();
                                     // tell remote server, who am i
                                     headers.add(Constant.LOCALHOST, WebSocketServer.LOCAL_ADDRESS.getHostName());

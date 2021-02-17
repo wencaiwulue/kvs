@@ -41,7 +41,7 @@ public class AppendEntriesRequestProcessor implements Processor {
             AppendEntriesRequest request = (AppendEntriesRequest) req;
             // heartbeat
             if (CollectionUtil.isEmpty(request.getEntries())) {
-                LOGGER.info("{} --> {}, receive heartbeat, term: {}", request.getLeaderId().getSocketAddress().getPort(), node.getLocalAddress().getSocketAddress().getPort(), request.getTerm());
+                LOGGER.info("{} --> {}, receive heartbeat, term: {}", request.getLeaderId().getPort(), node.getLocalAddress().getPort(), request.getTerm());
                 switch (node.getRole()) {
                     case LEADER:
                         LOGGER.error("leader receive heartbeats ?");
@@ -62,7 +62,7 @@ public class AppendEntriesRequestProcessor implements Processor {
                                     for (long i = node.getCommittedIndex() + 1; i <= request.getLeaderCommit(); i++) {
                                         LogEntry logEntry = node.getLogEntries().get(i);
                                         if (logEntry == null) {
-                                            LOGGER.warn("index: {} not found log at node: {}", i, node.getLocalAddress().getSocketAddress().getPort());
+                                            LOGGER.warn("index: {} not found log at node: {}", i, node.getLocalAddress().getPort());
                                         } else {
                                             logEntryList.add(logEntry);
                                         }
@@ -89,28 +89,32 @@ public class AppendEntriesRequestProcessor implements Processor {
                 return new AppendEntriesResponse(node.getCurrentTerm(), true);
             } else {
                 // First round, followers append log
-                LOGGER.info("{} --> {}, Receive synchronize log, term: {}", request.getLeaderId().getSocketAddress().getPort(), node.getLocalAddress().getSocketAddress().getPort(), request.getTerm());
+                LOGGER.info("{} --> {}, Receive synchronize log, term: {}",
+                        request.getLeaderId().getPort(), node.getLocalAddress().getPort(), request.getTerm());
                 // Reply false if log doesn't contain an entry at prevLogIndex whose term matches prevLogTerm
-                Function<AppendEntriesRequest, Boolean> preCheckOk = e -> Optional.ofNullable(node.getLogEntries().get(e.getPrevLogIndex())).filter(o -> o.getTerm() == e.getPrevLogTerm()).isPresent();
-                BiConsumer<AppendEntriesRequest, Node> consumeIfOk = (p1, p2) -> {
+                Function<AppendEntriesRequest, Boolean> preCheckOk = e -> Optional
+                        .ofNullable(node.getLogEntries().get(e.getPrevLogIndex()))
+                        .filter(o -> o.getTerm() == e.getPrevLogTerm())
+                        .isPresent();
+                BiConsumer<AppendEntriesRequest, Node> consumeIfOk = (pReq, pNode) -> {
                     //  If an existing entry conflicts with a new one (same index but different terms), delete the existing entry and all that follow it
-                    long notMatch = -1;
-                    for (LogEntry entry : p1.getEntries()) {
-                        if (p2.getLogEntries().get(entry.getIndex()) != null) {
-                            notMatch = entry.getIndex();
+                    int firstNotMatch = 0;
+                    for (int i = 0; i < pReq.getEntries().size(); i++) {
+                        LogEntry entry = pReq.getEntries().get(i);
+                        if (pNode.getLogEntries().get(entry.getIndex()) != null) {
+                            firstNotMatch = i;
+                            long indexExclusive = pNode.getLogEntries().getLastLogIndex() + 1;
+                            pNode.getLogEntries().removeRange(entry.getIndex(), indexExclusive);
                             break;
                         }
                     }
-                    if (notMatch > 0) {
-                        for (long i = notMatch; i <= p2.getLogEntries().getLastLogIndex(); i++) {
-                            p2.getLogEntries().remove(i);
-                        }
-                    }
                     // Append any new entries not already in the log
-                    p2.getLogEntries().save(p1.getEntries());
+                    List<LogEntry> temp = new ArrayList<>();
+                    pReq.getEntries().listIterator(firstNotMatch).forEachRemaining(temp::add);
+                    pNode.getLogEntries().save(temp);
                     // If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
-                    if (p1.getLeaderCommit() > p2.getCommittedIndex()) {
-                        p2.setCommittedIndex(Math.min(p1.getLeaderCommit(), p2.getLogEntries().getLastLogIndex()));
+                    if (pReq.getLeaderCommit() > pNode.getCommittedIndex()) {
+                        pNode.setCommittedIndex(Math.min(pReq.getLeaderCommit(), pNode.getLogEntries().getLastLogIndex()));
                     }
                     LOGGER.info("Append log successfully");
                 };

@@ -17,6 +17,8 @@ public interface StorageEngine<K, V> {
 
     boolean remove(K key);
 
+    default void removeRange(K keyInclusive, K keyExclusive) {}
+
     Iterator<Map.Entry<K, V>> iterator();
 
 }

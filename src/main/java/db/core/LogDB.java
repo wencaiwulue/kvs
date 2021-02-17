@@ -13,9 +13,12 @@ import util.FSTUtil;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.stream.Collectors;
+import java.util.stream.LongStream;
 
 /**
  * @author naison
@@ -116,7 +119,14 @@ public class LogDB {
         this.saveLastLogIndex(this.lastLogIndex);
     }
 
-    public void remove(long key) {
-        this.engine.remove(String.valueOf(key).getBytes());
+    public void removeRange(long indexInclusive, long indexExclusive) {
+        this.engine.removeRange(String.valueOf(indexInclusive).getBytes(), String.valueOf(indexExclusive).getBytes());
+    }
+
+    public List<LogEntry> getRange(long fromIndexInclusive, long toIndexExclusive) {
+        return LongStream.range(fromIndexInclusive, toIndexExclusive)
+                .mapToObj(this::get)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
     }
 }

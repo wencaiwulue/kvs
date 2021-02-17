@@ -34,6 +34,10 @@ public class NodeAddress implements Serializable {
         return Objects.hash(socketAddress);
     }
 
+    public int getPort() {
+        return this.socketAddress.getPort();
+    }
+
     @Override
     public String toString() {
         return "NodeAddress{" +

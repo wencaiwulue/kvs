@@ -68,7 +68,7 @@ public class CURDProcessor implements Processor {
         node.getWriteLock().lock();
         try {
             if (!node.isLeader()) {
-                LOGGER.warn("Redirect to leader: {},  current node: {}, role: {}", node.getLeaderAddress().getSocketAddress().getPort(), node.getLocalAddress().getSocketAddress().getPort(), node.getRole());
+                LOGGER.warn("Redirect to leader: {},  current node: {}, role: {}", node.getLeaderAddress().getPort(), node.getLocalAddress().getPort(), node.getRole());
                 return RpcClient.doRequest(node.getLeaderAddress(), req); // redirect to leader
             }
             LOGGER.info("Leader receive CURD request");
