@@ -10,7 +10,7 @@ import raft.enums.CURDOperation;
 import raft.enums.Role;
 import rpc.model.requestresponse.AppendEntriesRequest;
 import rpc.model.requestresponse.AppendEntriesResponse;
-import rpc.model.requestresponse.CURDKVRequest;
+import rpc.model.requestresponse.CURDRequest;
 import rpc.model.requestresponse.CURDResponse;
 import rpc.model.requestresponse.Request;
 import rpc.model.requestresponse.Response;
@@ -33,7 +33,7 @@ public class CURDProcessor implements Processor {
 
     @Override
     public boolean supports(Request req) {
-        return req instanceof CURDKVRequest;
+        return req instanceof CURDRequest;
     }
 
     /**
@@ -51,7 +51,7 @@ public class CURDProcessor implements Processor {
      */
     @Override
     public Response process(Request req, Node node) {
-        CURDKVRequest request = (CURDKVRequest) req;
+        CURDRequest request = (CURDRequest) req;
 
         if (CURDOperation.get.equals(request.getOperation())) { // if it's get operation, get data and return
             Object val = node.getDb().get(request.getKey()[0]);

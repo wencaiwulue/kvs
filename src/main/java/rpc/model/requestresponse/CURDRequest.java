@@ -14,7 +14,7 @@ import raft.enums.CURDOperation;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class CURDKVRequest extends Request {
+public class CURDRequest extends Request {
     private static final long serialVersionUID = -6395433429049464912L;
     private CURDOperation operation;
     private String[] key;
