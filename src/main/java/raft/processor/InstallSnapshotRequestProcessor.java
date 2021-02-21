@@ -1,6 +1,5 @@
 package raft.processor;
 
-import db.core.StateMachine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import raft.LogEntry;
@@ -40,9 +39,7 @@ public class InstallSnapshotRequestProcessor implements Processor {
             return new InstallSnapshotResponse(node.getCurrentTerm());
         }
 
-        for (LogEntry logEntry : node.getLogEntries().getRange(0, node.getLogEntries().getLastLogIndex() + 1)) {
-            StateMachine.writeLogToStatemachine(node, logEntry);
-        }
+        node.getStateMachine().applyLog(node.getLogEntries().getRange(0, node.getLogEntries().getLastLogIndex() + 1));
 
         return new InstallSnapshotResponse(node.getCurrentTerm());
     }

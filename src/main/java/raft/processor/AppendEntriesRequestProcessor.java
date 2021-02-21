@@ -1,6 +1,5 @@
 package raft.processor;
 
-import db.core.StateMachine;
 import org.junit.jupiter.api.Assertions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -132,7 +131,7 @@ public class AppendEntriesRequestProcessor implements Processor {
                                 logEntryList.add(logEntry);
                             }
                         }
-                        StateMachine.apply(logEntryList, pNode);
+                        node.applyLogToStatemachine(logEntryList);
                         return true;
                     } else {
                         // out of date too much, needs to install snapshot for synchronizing log

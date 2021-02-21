@@ -1,5 +1,6 @@
 package db.operationservice;
 
+import db.core.StateMachine;
 import raft.LogEntry;
 import raft.Node;
 import raft.enums.CURDOperation;
@@ -12,6 +13,6 @@ public interface Service {
 
     boolean supports(CURDOperation operation);
 
-    boolean service(Node node, LogEntry logEntry);
+    boolean service(StateMachine stateMachine, LogEntry logEntry);
 
 }

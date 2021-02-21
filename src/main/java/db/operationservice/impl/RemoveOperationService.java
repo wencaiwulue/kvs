@@ -1,5 +1,6 @@
 package db.operationservice.impl;
 
+import db.core.StateMachine;
 import db.operationservice.Service;
 import raft.LogEntry;
 import raft.Node;
@@ -16,8 +17,8 @@ public class RemoveOperationService implements Service {
     }
 
     @Override
-    public boolean service(Node node, LogEntry logEntry) {
-        node.getDb().remove(logEntry.getKey());
+    public boolean service(StateMachine stateMachine, LogEntry logEntry) {
+        stateMachine.remove(logEntry.getKey());
         return true;
     }
 }

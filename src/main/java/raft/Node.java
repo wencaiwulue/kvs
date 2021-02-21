@@ -4,6 +4,7 @@ import com.google.common.collect.Sets;
 import db.config.Config;
 import db.core.DB;
 import db.core.LogDB;
+import db.core.StateMachine;
 import db.core.storage.impl.MapStorage;
 import lombok.Getter;
 import lombok.Setter;
@@ -65,7 +66,7 @@ public class Node implements INode {
     // all nodes address, include current node
     private Set<NodeAddress> allNodeAddresses;
 
-    private DB db;
+    private StateMachine stateMachine;
     private LogDB logEntries;
     // default role is follower
     private Role role = Role.FOLLOWER;
@@ -101,7 +102,7 @@ public class Node implements INode {
     public Node(NodeAddress localAddress, Set<NodeAddress> allNodeAddresses) {
         this.localAddress = localAddress;
         this.allNodeAddresses = allNodeAddresses;
-        this.db = new DB(Config.DB_DIR);
+        this.stateMachine = new StateMachine(new DB(Config.DB_DIR));
         this.logEntries = new LogDB(Config.LOG_DIR);
         // initialized to leader last log index + 1
         this.nextIndex = this.allNodeAddresses.stream().collect(Collectors.toMap(e -> e, e -> this.logEntries.getLastLogIndex() + 1));
@@ -203,8 +204,8 @@ public class Node implements INode {
     @Override
     public void shutdown() {
         this.start = false;
-        if (this.db.getStorage() instanceof MapStorage) {
-            ((MapStorage<byte[], byte[]>) this.db.getStorage()).writeDataToDisk();
+        if (this.stateMachine.getDb() instanceof MapStorage) {
+            ((MapStorage<?, ?>) this.stateMachine.getDb()).writeDataToDisk();
         }
     }
 
@@ -401,4 +402,42 @@ public class Node implements INode {
         return System.currentTimeMillis() + Constant.ELECT_RATE.toMillis() + ThreadLocalRandom.current().nextInt(100);
     }
 
+    /*
+     * notify follower apply log to statemachine
+     * issue: if network split occurs between after leader apply log to statemachine and notify peer to apply log to statemachine
+     * how to avoid this issue ?
+     * */
+    public void applyLogToStatemachine(List<LogEntry> entries) {
+        // apply log to statemachine
+        this.stateMachine.applyLog(entries);
+        // push commitIndex
+        long lastLogIndex = this.logEntries.getLastLogIndex();
+        this.setCommittedIndex(lastLogIndex);
+        this.setLastAppliedIndex(lastLogIndex);
+
+        if (this.isLeader()) {
+            // Second round, notify peer to apply log to statemachine
+            AppendEntriesRequest request = AppendEntriesRequest.builder()
+                    .term(this.currentTerm)
+                    .leaderId(this.localAddress)
+                    .prevLogIndex(lastLogIndex)
+                    .prevLogTerm(this.logEntries.getLastLogTerm())
+                    .entries(entries)
+                    .leaderCommit(this.committedIndex)
+                    .build();
+            for (NodeAddress remote : this.allNodeAddressExcludeMe()) {
+                this.matchIndex.put(remote, lastLogIndex);
+                this.nextIndex.put(remote, lastLogIndex + 1);
+                RpcClient.doRequestAsync(remote, request, response -> {
+                    if (response != null && ((AppendEntriesResponse) response).isSuccess()) {
+                        this.getNextIndex().put(remote, lastLogIndex + 1);
+                        this.getMatchIndex().put(remote, lastLogIndex);
+                    } else {
+                        LOGGER.error("Notify follower to apply log to statemachine occurs error, so try to replicate log");
+                        this.leaderReplicateLog();
+                    }
+                });
+            }
+        }
+    }
 }

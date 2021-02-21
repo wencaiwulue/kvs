@@ -1,5 +1,6 @@
 package db.operationservice.impl;
 
+import db.core.StateMachine;
 import db.operationservice.Service;
 import raft.LogEntry;
 import raft.Node;
@@ -16,8 +17,8 @@ public class SetOperationService implements Service {
     }
 
     @Override
-    public boolean service(Node node, LogEntry logEntry) {
-        node.getDb().set(logEntry.getKey(), logEntry.getValue());
+    public boolean service(StateMachine stateMachine, LogEntry logEntry) {
+        stateMachine.set(logEntry.getKey(), logEntry.getValue());
         return true;
     }
 }

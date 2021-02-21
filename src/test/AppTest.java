@@ -85,9 +85,9 @@ class AppTest {
 
     @Test
     void testAddAndGetData() throws Exception {
-        int value = 27;
+        int value = 30;
         NettyClientTest.sendSync(p8003, new CURDRequest(CURDOperation.set, new String[]{"a"}, new Object[]{value}));
-        Response res = NettyClientTest.sendSync(p8004, new CURDRequest(CURDOperation.get, new String[]{"a"}, null));
+        Response res = NettyClientTest.sendSync(p8002, new CURDRequest(CURDOperation.get, new String[]{"a"}, null));
         Assertions.assertEquals(value, ((CURDResponse) res).value[0]);
     }
 

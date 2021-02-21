@@ -1,5 +1,6 @@
 package db.operationservice.impl;
 
+import db.core.StateMachine;
 import db.operationservice.Service;
 import raft.LogEntry;
 import raft.Node;
@@ -18,8 +19,8 @@ public class ExpireOperationService implements Service {
     }
 
     @Override
-    public boolean service(Node node, LogEntry logEntry) {
-        node.getDb().expireKey(logEntry.getKey(), (int) logEntry.getValue(), TimeUnit.MILLISECONDS);
+    public boolean service(StateMachine stateMachine, LogEntry logEntry) {
+        stateMachine.expireKey(logEntry.getKey(), (int) logEntry.getValue(), TimeUnit.MILLISECONDS);
         return false;
     }
 }

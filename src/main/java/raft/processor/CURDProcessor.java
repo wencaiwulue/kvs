@@ -1,6 +1,5 @@
 package raft.processor;
 
-import db.core.StateMachine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import raft.LogEntry;
@@ -40,10 +39,10 @@ public class CURDProcessor implements Processor {
      * 1, leader add log, but not push commitIndex
      * 2, leader send first time of appendEntities, to notify peer write log
      * 3, if (most peer write log successfully)
-     * -    leader apply log to db, push commitIndex, notify peer to apply log to db
+     * -    leader apply log to statemachine, push commitIndex, notify peer to apply log to statemachine
      * -  else
      * -    will not apply log, not push commitIndex, not notify peer
-     * 4, if most peer apply log to db, return result to client
+     * 4, if most peer apply log to statemachine, return result to client
      *
      * @param req  req
      * @param node node
@@ -54,13 +53,13 @@ public class CURDProcessor implements Processor {
         CURDRequest request = (CURDRequest) req;
 
         if (CURDOperation.get.equals(request.getOperation())) { // if it's get operation, get data and return
-            Object val = node.getDb().get(request.getKey()[0]);
+            Object val = node.getStateMachine().get(request.getKey()[0]);
             LOGGER.info("get key: {} from db and value: {}", request.getKey(), val);
             return new CURDResponse(true, new Object[]{val});
         } else if (CURDOperation.mget.equals(request.getOperation())) {
             Object[] values = new Object[request.getKey().length];
             for (int i = 0; i < request.getKey().length; i++) {
-                values[i] = node.getDb().get(request.getKey()[i]);
+                values[i] = node.getStateMachine().get(request.getKey()[i]);
             }
             return new CURDResponse(true, values);
         }
@@ -137,7 +136,7 @@ public class CURDProcessor implements Processor {
             // more than half peer already write to log
             if (ai.get() >= (node.getAllNodeAddresses().size() / 2 + 1)) {
                 // Second round, leader notify peers to apply log to statemachine
-                StateMachine.apply(logEntries, node);
+                node.applyLogToStatemachine(logEntries);
                 LOGGER.info("AppendEntries received most peer response, applying data to state machine");
                 return new CURDResponse(true, null);
             } else {

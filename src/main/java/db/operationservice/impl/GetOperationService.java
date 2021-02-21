@@ -1,5 +1,6 @@
 package db.operationservice.impl;
 
+import db.core.StateMachine;
 import db.operationservice.Service;
 import raft.LogEntry;
 import raft.Node;
@@ -16,7 +17,7 @@ public class GetOperationService implements Service {
     }
 
     @Override
-    public boolean service(Node node, LogEntry logEntry) {
+    public boolean service(StateMachine stateMachine, LogEntry logEntry) {
         return true;
     }
 }
