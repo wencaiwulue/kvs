@@ -70,6 +70,7 @@ public class AddPeerRequestProcessor implements Processor {
             RpcClient.doRequestAsync(request.getPeer(), new SynchronizeStateRequest(node.getLocalAddress(), node.getAllNodeAddresses()), null);
             // need to replicate log
             ThreadUtil.getThreadPool().submit(() -> {
+                node.leaderReplicateLog();
                 List<LogEntry> entries = node.getLogEntries().getRange(1, node.getLogEntries().getLastLogIndex() + 1);
                 AppendEntriesRequest appendEntriesRequest = new AppendEntriesRequest(node.getCurrentTerm(), node.getLocalAddress(), 0, 0, entries, node.getCommittedIndex());
                 RpcClient.doRequestAsync(request.getPeer(), appendEntriesRequest, re -> {

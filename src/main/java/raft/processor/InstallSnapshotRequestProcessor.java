@@ -10,6 +10,8 @@ import rpc.model.requestresponse.InstallSnapshotResponse;
 import rpc.model.requestresponse.Request;
 import rpc.model.requestresponse.Response;
 
+import java.util.Arrays;
+
 /**
  * @author naison
  * @since 4/13/2020 22:38
@@ -26,8 +28,19 @@ public class InstallSnapshotRequestProcessor implements Processor {
     @Override
     public Response process(Request req, Node node) {
         InstallSnapshotRequest request = (InstallSnapshotRequest) req;
+        if (request.getTerm() < node.getCurrentTerm()) {
+            return new InstallSnapshotResponse(node.getCurrentTerm());
+        }
+        if (request.getOffset() == 0) {
 
-        for (LogEntry logEntry : request.getData()) {
+        }
+        node.getLogEntries().save(Arrays.asList(request.getData()));
+
+        if (!request.isDone()) {
+            return new InstallSnapshotResponse(node.getCurrentTerm());
+        }
+
+        for (LogEntry logEntry : node.getLogEntries().getRange(0, node.getLogEntries().getLastLogIndex() + 1)) {
             StateMachine.writeLogToDB(node, logEntry);
         }
 

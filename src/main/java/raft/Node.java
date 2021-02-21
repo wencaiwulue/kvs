@@ -28,7 +28,7 @@ import util.ThreadUtil;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +43,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * @author naison
@@ -101,9 +102,10 @@ public class Node implements INode {
         this.allNodeAddresses = allNodeAddresses;
         this.db = new DB(Config.DB_DIR);
         this.logEntries = new LogDB(Config.LOG_DIR);
-        this.nextIndex = new HashMap<>();
-        this.nextIndex.put(this.localAddress, this.logEntries.getLastLogIndex() + 1);
-        this.matchIndex = new HashMap<>();
+        // initialized to leader last log index + 1
+        this.nextIndex = this.allNodeAddresses.stream().collect(Collectors.toMap(e -> e, e -> this.logEntries.getLastLogIndex() + 1));
+        // initialized to 0, increases monotonically
+        this.matchIndex = this.allNodeAddresses.stream().collect(Collectors.toMap(e -> e, e -> 0L));
 
         // read from persistent storage, write before return result to client
         this.currentTerm = this.logEntries.getCurrentTerm();
@@ -141,51 +143,53 @@ public class Node implements INode {
                 return;
             }
 
-            // if current node role is leader, then needs to send heartbeat to other, tell them i am boss, i rule anything !!!
-            if (isLeader()) {
-                for (NodeAddress remote : this.allNodeAddressExcludeMe()) {
-                    Consumer<Response> consumer = res -> {
-                        if (res != null) {
-                            LOGGER.info("{} --> {}, receive heartbeat response", remote.getPort(), this.localAddress.getPort());
-                        }
-                        // install snapshot
-                        // 这里约定的是如果心跳包回复ErrorResponse, 说明是out too much的节点，需要install snapshot
-                        if (res instanceof ErrorResponse) {
-                            InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) RpcClient.doRequest(remote, new InstallSnapshotRequest(this.currentTerm, this.localAddress, 0, 0, 0, null, true));
-                            if (snapshotResponse == null || snapshotResponse.getTerm() < this.currentTerm) {
-                                LOGGER.error("Install snapshot error, should retry or not ?");
-                            }
-                        } else if (res instanceof AppendEntriesResponse) {
-                            AppendEntriesResponse response = (AppendEntriesResponse) res;
-                            if (response.getTerm() > this.currentTerm) {
-                                this.role = Role.FOLLOWER;
-                                this.currentTerm = response.getTerm();
-                            }
-                        }
-                    };
+            if (!this.isLeader()) {
+                return;
+            }
 
-                    AppendEntriesRequest request = new AppendEntriesRequest(this.currentTerm, this.localAddress, -1, -1, Collections.emptyList(), this.committedIndex);
-                    Long nextIndex = this.getNextIndex().getOrDefault(remote, 1L);
-                    if (nextIndex == this.logEntries.getLastLogIndex() + 1) {
-                        request.setPrevLogIndex(this.logEntries.getLastLogIndex());
-                        request.setPrevLogTerm(this.logEntries.getLastLogTerm());
-                    } else {
-                        LogEntry logEntry = this.logEntries.get(nextIndex - 1);
-                        if (logEntry == null) {
-                            LOGGER.error("Log entry is null");
-//                            throw new NullPointerException("Log entry is null");
-                        } else {
-                            request.setPrevLogIndex(logEntry.getIndex());
-                            request.setPrevLogIndex(logEntry.getTerm());
+            // if current node role is leader, then needs to send heartbeat to other, tell them i am boss, i rule anything !!!
+            for (NodeAddress remote : this.allNodeAddressExcludeMe()) {
+                Consumer<Response> consumer = res -> {
+                    if (res != null) {
+                        LOGGER.info("{} --> {}, receive heartbeat response", remote.getPort(), this.localAddress.getPort());
+                    }
+                    // install snapshot
+                    // 这里约定的是如果心跳包回复ErrorResponse, 说明是out too much的节点，需要install snapshot
+                    if (res instanceof ErrorResponse) {
+                        InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) RpcClient.doRequest(remote, new InstallSnapshotRequest(this.currentTerm, this.localAddress, 0, 0, 0, null, true));
+                        if (snapshotResponse == null || snapshotResponse.getTerm() < this.currentTerm) {
+                            LOGGER.error("Install snapshot error, should retry or not ?");
+                        }
+                    } else if (res instanceof AppendEntriesResponse) {
+                        AppendEntriesResponse response = (AppendEntriesResponse) res;
+                        if (response.getTerm() > this.currentTerm) {
+                            this.role = Role.FOLLOWER;
+                            this.currentTerm = response.getTerm();
                         }
                     }
-                    request.setEntries(this.logEntries.getRange(nextIndex, this.logEntries.getLastLogIndex() + 1));
-                    RpcClient.doRequestAsync(remote, request, consumer);
+                };
+
+                AppendEntriesRequest request = new AppendEntriesRequest(this.currentTerm, this.localAddress, -1, -1, Collections.emptyList(), this.committedIndex);
+                Long nextIndex = this.getNextIndex().getOrDefault(remote, 1L);
+                if (nextIndex == this.logEntries.getLastLogIndex() + 1) {
+                    request.setPrevLogIndex(this.logEntries.getLastLogIndex());
+                    request.setPrevLogTerm(this.logEntries.getLastLogTerm());
+                } else {
+                    LogEntry logEntry = this.logEntries.get(nextIndex - 1);
+                    if (logEntry == null) {
+                        LOGGER.error("Log entry is null");
+//                            throw new NullPointerException("Log entry is null");
+                    } else {
+                        request.setPrevLogIndex(logEntry.getIndex());
+                        request.setPrevLogIndex(logEntry.getTerm());
+                    }
                 }
-                this.nextElectTime = this.nextElectTime();
-                this.nextHeartbeatTime = System.currentTimeMillis() + Constant.HEARTBEAT_RATE.toMillis();
-                LOGGER.info("Delay elect successfully");
+                request.setEntries(this.logEntries.getRange(nextIndex, this.logEntries.getLastLogIndex() + 1));
+                RpcClient.doRequestAsync(remote, request, consumer);
             }
+            this.nextElectTime = this.nextElectTime();
+            this.nextHeartbeatTime = System.currentTimeMillis() + Constant.HEARTBEAT_RATE.toMillis();
+            LOGGER.info("Delay elect successfully");
         };
         ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(this.heartbeatTask, 0, Constant.HEARTBEAT_RATE.toMillis(), TimeUnit.MILLISECONDS);
         this.start = true;
@@ -279,10 +283,11 @@ public class Node implements INode {
                 ThreadUtil.getThreadPool().submit(() -> {
                     this.heartbeatTask.run();
                     this.allNodeAddressExcludeMe().forEach(e -> RpcClient.doRequestAsync(e, new SynchronizeStateRequest(this.getLocalAddress(), this.getAllNodeAddresses()), null));
+                    this.leaderReplicateLog();
                 });
                 // Reinitialized after election
-                this.nextIndex.clear();
-                this.matchIndex.clear();
+                this.nextIndex = this.allNodeAddresses.stream().collect(Collectors.toMap(e -> e, e -> this.logEntries.getLastLogIndex() + 1));
+                this.matchIndex = this.allNodeAddresses.stream().collect(Collectors.toMap(e -> e, e -> 0L));
             } else {
                 LOGGER.info("Elect failed, expect ticket is {}, but received {}", mostTicketNum, ticket.get());
             }
@@ -291,6 +296,52 @@ public class Node implements INode {
             LOGGER.info("Elect spent time: {}ms", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
             this.writeLock.unlock();
         }
+    }
+
+    public void leaderReplicateLog() {
+        if (!isLeader()) return;
+        // If last log index ≥ nextIndex for a follower:
+        //   send AppendEntries RPC with log entries starting at nextIndex
+        //     If successful: update nextIndex and matchIndex for follower
+        //     If AppendEntries fails because of log inconsistency:
+        //       decrement nextIndex and retry
+        for (NodeAddress address : this.allNodeAddressExcludeMe()) {
+            long followerNextIndex = this.nextIndex.getOrDefault(address, this.logEntries.getLastLogIndex() + 1);
+            long followerMatchIndex = this.matchIndex.getOrDefault(address, 0L);
+            if (this.logEntries.getLastLogIndex() >= followerNextIndex) {
+                while (true) {
+                    AppendEntriesRequest request = AppendEntriesRequest.builder()
+                            .leaderId(this.localAddress)
+                            .leaderCommit(this.getCommittedIndex())
+                            .term(this.currentTerm)
+                            .entries(this.logEntries.getRange(followerNextIndex, this.logEntries.getLastLogIndex() + 1))
+                            .build();
+                    AppendEntriesResponse response = (AppendEntriesResponse) RpcClient.doRequest(address, request);
+                    if (response != null && response.isSuccess()) {
+                        this.nextIndex.put(address, followerNextIndex);
+                        this.matchIndex.put(address, followerMatchIndex);
+                        break;
+                    }
+                    // If retry too much time, think about InstallSnapshot
+                    followerNextIndex--;
+                }
+            }
+        }
+        // If there exists an N such that N > commitIndex, a majority
+        // of matchIndex[i] ≥ N, and log[N].term == currentTerm:
+        // set commitIndex = N
+        int majority = this.allNodeAddresses.size() / 2 + 1;
+        this.matchIndex.values()
+                .stream()
+                .sorted()
+                .collect(Collectors.groupingBy(e -> e))
+                .entrySet()
+                .stream()
+                .filter(e -> e.getKey() > this.committedIndex)
+                .filter(e -> e.getValue().size() >= majority)
+                .max(Comparator.comparingLong(Map.Entry::getKey))
+                .map(Map.Entry::getKey)
+                .ifPresent(this::setCommittedIndex);
     }
 
     public boolean isLeader() {

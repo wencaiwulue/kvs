@@ -11,6 +11,7 @@ import raft.LogEntry;
 import raft.Node;
 import raft.NodeAddress;
 import rpc.model.requestresponse.AppendEntriesRequest;
+import rpc.model.requestresponse.AppendEntriesResponse;
 import rpc.netty.RpcClient;
 
 import java.util.Arrays;
@@ -47,7 +48,15 @@ public class StateMachine {
             for (NodeAddress remote : node.allNodeAddressExcludeMe()) {
                 node.getMatchIndex().put(remote, lastLogIndex);
                 node.getNextIndex().put(remote, lastLogIndex + 1);
-                RpcClient.doRequestAsync(remote, request, null);
+                RpcClient.doRequestAsync(remote, request, response -> {
+                    if (response != null && ((AppendEntriesResponse) response).isSuccess()) {
+                        node.getNextIndex().put(remote, lastLogIndex + 1);
+                        node.getMatchIndex().put(remote, lastLogIndex);
+                    } else {
+                        LOGGER.error("Notify follower to apply log to db occurs error, so try to replicate log");
+                        node.leaderReplicateLog();
+                    }
+                });
             }
         }
     }

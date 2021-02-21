@@ -41,7 +41,8 @@ public class AppendEntriesRequestProcessor implements Processor {
             AppendEntriesRequest request = (AppendEntriesRequest) req;
             // heartbeat
             if (CollectionUtil.isEmpty(request.getEntries())) {
-                LOGGER.info("{} --> {}, receive heartbeat, term: {}", request.getLeaderId().getPort(), node.getLocalAddress().getPort(), request.getTerm());
+                LOGGER.info("{} --> {}, receive heartbeat, term: {}",
+                        request.getLeaderId().getPort(), node.getLocalAddress().getPort(), request.getTerm());
                 switch (node.getRole()) {
                     case LEADER:
                         LOGGER.error("leader receive heartbeats ?");
@@ -62,19 +63,23 @@ public class AppendEntriesRequestProcessor implements Processor {
                                     for (long i = node.getCommittedIndex() + 1; i <= request.getLeaderCommit(); i++) {
                                         LogEntry logEntry = node.getLogEntries().get(i);
                                         if (logEntry == null) {
-                                            LOGGER.warn("index: {} not found log at node: {}", i, node.getLocalAddress().getPort());
+                                            LOGGER.warn("index: {} not found log at node: {}",
+                                                    i, node.getLocalAddress().getPort());
                                         } else {
                                             logEntryList.add(logEntry);
                                         }
                                     }
                                     StateMachine.apply(logEntryList, node);
+                                    return new AppendEntriesResponse(node.getCurrentTerm(), true);
                                 } else {
                                     // out of date too much, needs to install snapshot for synchronizing log
                                     return new ErrorResponse();
                                 }
+                            } else if (size < 0) {
+                                LOGGER.error("Leader commitIndex < follower commitIndex, this is impossible");
                             }
                         }
-                        break;
+                        return new AppendEntriesResponse(node.getCurrentTerm(), true);
                     case CANDIDATE:
                         if (request.getTerm() < node.getCurrentTerm()) {
                             LOGGER.error("leader term should not less than candidate's term");
@@ -83,8 +88,11 @@ public class AppendEntriesRequestProcessor implements Processor {
                             node.setCurrentTerm(request.getTerm());
                             node.setLeaderAddress(request.getLeaderId());
                             node.setRole(Role.FOLLOWER);
+                            return new AppendEntriesResponse(node.getCurrentTerm(), true);
                         }
                         break;
+                    default:
+                        return new AppendEntriesResponse(node.getCurrentTerm(), false);
                 }
                 return new AppendEntriesResponse(node.getCurrentTerm(), true);
             } else {
@@ -97,7 +105,8 @@ public class AppendEntriesRequestProcessor implements Processor {
                         .filter(o -> o.getTerm() == e.getPrevLogTerm())
                         .isPresent();
                 BiConsumer<AppendEntriesRequest, Node> consumeIfOk = (pReq, pNode) -> {
-                    //  If an existing entry conflicts with a new one (same index but different terms), delete the existing entry and all that follow it
+                    // If an existing entry conflicts with a new one (same index but different terms),
+                    // delete the existing entry and all that follow it
                     int firstNotMatch = 0;
                     for (int i = 0; i < pReq.getEntries().size(); i++) {
                         LogEntry entry = pReq.getEntries().get(i);

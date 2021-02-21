@@ -1,6 +1,7 @@
 package rpc.model.requestresponse;
 
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -18,6 +19,7 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class AppendEntriesRequest extends Request {
     private static final long serialVersionUID = -2322012843577274410L;
 
