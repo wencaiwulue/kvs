@@ -41,7 +41,7 @@ public class InstallSnapshotRequestProcessor implements Processor {
         }
 
         for (LogEntry logEntry : node.getLogEntries().getRange(0, node.getLogEntries().getLastLogIndex() + 1)) {
-            StateMachine.writeLogToDB(node, logEntry);
+            StateMachine.writeLogToStatemachine(node, logEntry);
         }
 
         return new InstallSnapshotResponse(node.getCurrentTerm());

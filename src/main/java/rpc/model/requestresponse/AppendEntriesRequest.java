@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import lombok.ToString;
 import raft.LogEntry;
 import raft.NodeAddress;
 
@@ -20,6 +21,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@ToString
 public class AppendEntriesRequest extends Request {
     private static final long serialVersionUID = -2322012843577274410L;
 

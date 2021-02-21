@@ -1,6 +1,7 @@
 package raft.processor;
 
 import db.core.StateMachine;
+import org.junit.jupiter.api.Assertions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import raft.LogEntry;
@@ -8,7 +9,6 @@ import raft.Node;
 import raft.enums.Role;
 import rpc.model.requestresponse.AppendEntriesRequest;
 import rpc.model.requestresponse.AppendEntriesResponse;
-import rpc.model.requestresponse.ErrorResponse;
 import rpc.model.requestresponse.Request;
 import rpc.model.requestresponse.Response;
 import util.CollectionUtil;
@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
-import java.util.function.Function;
+import java.util.function.BiPredicate;
 
 /**
  * @author naison
@@ -39,77 +39,54 @@ public class AppendEntriesRequestProcessor implements Processor {
             // push off elect
             node.setNextElectTime(node.nextElectTime());
             AppendEntriesRequest request = (AppendEntriesRequest) req;
+            BiPredicate<AppendEntriesRequest, Node> checkPreEntry = (pRequest, pNode) -> Optional
+                    .ofNullable(pNode.getLogEntries().get(pRequest.getPrevLogIndex()))
+                    .filter(entry -> entry.getTerm() == pRequest.getPrevLogTerm())
+                    .isPresent();
             // heartbeat
             if (CollectionUtil.isEmpty(request.getEntries())) {
-                LOGGER.info("{} --> {}, receive heartbeat, term: {}",
+                LOGGER.debug("{} --> {}, receive heartbeat, term: {}",
                         request.getLeaderId().getPort(), node.getLocalAddress().getPort(), request.getTerm());
                 switch (node.getRole()) {
                     case LEADER:
-                        LOGGER.error("leader receive heartbeats ?");
+                        LOGGER.error("Leader receive heartbeats ?");
                         return new AppendEntriesResponse(node.getCurrentTerm(), false);
                     case FOLLOWER:
                         if (request.getTerm() < node.getCurrentTerm()) {
-                            LOGGER.error("leader term should not less than follower's term");
+                            LOGGER.error("Leader term should not less than follower's term");
                             return new AppendEntriesResponse(node.getCurrentTerm(), false);
-                        } else if (request.getTerm() >= node.getCurrentTerm()) {
+                        } else if (request.getTerm() > node.getCurrentTerm()) {
                             node.setCurrentTerm(request.getTerm());
                             node.setLeaderAddress(request.getLeaderId());
-                            // Second round, followers apply log to statemachine
-                            long size = request.getLeaderCommit() - node.getCommittedIndex();
-                            if (size > 0) {
-                                LOGGER.info("Second round to apply log to db");
-                                if (size < 100) {
-                                    List<LogEntry> logEntryList = new ArrayList<>();
-                                    for (long i = node.getCommittedIndex() + 1; i <= request.getLeaderCommit(); i++) {
-                                        LogEntry logEntry = node.getLogEntries().get(i);
-                                        if (logEntry == null) {
-                                            LOGGER.warn("index: {} not found log at node: {}",
-                                                    i, node.getLocalAddress().getPort());
-                                        } else {
-                                            logEntryList.add(logEntry);
-                                        }
-                                    }
-                                    StateMachine.apply(logEntryList, node);
-                                    return new AppendEntriesResponse(node.getCurrentTerm(), true);
-                                } else {
-                                    // out of date too much, needs to install snapshot for synchronizing log
-                                    return new ErrorResponse();
-                                }
-                            } else if (size < 0) {
-                                LOGGER.error("Leader commitIndex < follower commitIndex, this is impossible");
-                            }
+                            return new AppendEntriesResponse(node.getCurrentTerm(), checkPreEntry.test(request, node));
+                        } else {
+                            node.setLeaderAddress(request.getLeaderId());
+                            return new AppendEntriesResponse(node.getCurrentTerm(), checkPreEntry.test(request, node));
                         }
-                        return new AppendEntriesResponse(node.getCurrentTerm(), true);
                     case CANDIDATE:
                         if (request.getTerm() < node.getCurrentTerm()) {
                             LOGGER.error("leader term should not less than candidate's term");
                             return new AppendEntriesResponse(node.getCurrentTerm(), false);
-                        } else if (request.getTerm() >= node.getCurrentTerm()) {
+                        } else if (request.getTerm() > node.getCurrentTerm()) {
                             node.setCurrentTerm(request.getTerm());
                             node.setLeaderAddress(request.getLeaderId());
                             node.setRole(Role.FOLLOWER);
-                            return new AppendEntriesResponse(node.getCurrentTerm(), true);
+                            return new AppendEntriesResponse(node.getCurrentTerm(), checkPreEntry.test(request, node));
+                        } else {
+                            node.setLeaderAddress(request.getLeaderId());
+                            node.setRole(Role.FOLLOWER);
+                            return new AppendEntriesResponse(node.getCurrentTerm(), checkPreEntry.test(request, node));
                         }
-                        break;
                     default:
                         return new AppendEntriesResponse(node.getCurrentTerm(), false);
                 }
-                return new AppendEntriesResponse(node.getCurrentTerm(), true);
             } else {
-                // First round, followers append log
-                LOGGER.info("{} --> {}, Receive synchronize log, term: {}",
-                        request.getLeaderId().getPort(), node.getLocalAddress().getPort(), request.getTerm());
-                // Reply false if log doesn't contain an entry at prevLogIndex whose term matches prevLogTerm
-                Function<AppendEntriesRequest, Boolean> preCheckOk = e -> Optional
-                        .ofNullable(node.getLogEntries().get(e.getPrevLogIndex()))
-                        .filter(o -> o.getTerm() == e.getPrevLogTerm())
-                        .isPresent();
-                BiConsumer<AppendEntriesRequest, Node> consumeIfOk = (pReq, pNode) -> {
+                BiConsumer<AppendEntriesRequest, Node> consumeIfOk = (pRequest, pNode) -> {
                     // If an existing entry conflicts with a new one (same index but different terms),
                     // delete the existing entry and all that follow it
                     int firstNotMatch = 0;
-                    for (int i = 0; i < pReq.getEntries().size(); i++) {
-                        LogEntry entry = pReq.getEntries().get(i);
+                    for (int i = 0; i < pRequest.getEntries().size(); i++) {
+                        LogEntry entry = pRequest.getEntries().get(i);
                         if (pNode.getLogEntries().get(entry.getIndex()) != null) {
                             firstNotMatch = i;
                             long indexExclusive = pNode.getLogEntries().getLastLogIndex() + 1;
@@ -119,23 +96,60 @@ public class AppendEntriesRequestProcessor implements Processor {
                     }
                     // Append any new entries not already in the log
                     List<LogEntry> temp = new ArrayList<>();
-                    pReq.getEntries().listIterator(firstNotMatch).forEachRemaining(temp::add);
+                    pRequest.getEntries().listIterator(firstNotMatch).forEachRemaining(temp::add);
                     pNode.getLogEntries().save(temp);
                     // If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
-                    if (pReq.getLeaderCommit() > pNode.getCommittedIndex()) {
-                        pNode.setCommittedIndex(Math.min(pReq.getLeaderCommit(), pNode.getLogEntries().getLastLogIndex()));
+                    if (pRequest.getLeaderCommit() > pNode.getCommittedIndex()) {
+                        pNode.setCommittedIndex(Math.min(pRequest.getLeaderCommit(), pNode.getLogEntries().getLastLogIndex()));
                     }
                     LOGGER.info("Append log successfully");
                 };
-                BiFunction<AppendEntriesRequest, Node, Boolean> func = (p1, p2) -> {
-                    Boolean isOk = preCheckOk.apply(p1);
+                // First round, followers append log
+                BiFunction<AppendEntriesRequest, Node, Boolean> firstRoundFunc = (pRequest, pNode) -> {
+                    // Reply false if log doesn't contain an entry at prevLogIndex whose term matches prevLogTerm
+                    boolean pass = checkPreEntry.test(pRequest, pNode);
                     // TODO
-                    if (/*isOk*/true) {
-                        consumeIfOk.accept(p1, p2);
+                    if (/*pass*/true) {
+                        consumeIfOk.accept(pRequest, pNode);
                     } else {
-                        LOGGER.warn("PreCheck not pass !");
+                        LOGGER.warn("PreCheck not pass, request: {}", pRequest);
                     }
-                    return /*isOk*/true;
+                    return /*pass*/true;
+                };
+
+                // Second round, followers apply log to statemachine
+                BiFunction<AppendEntriesRequest, Node, Boolean> secondRoundFunc = (pRequest, pNode) -> {
+                    long size = pRequest.getLeaderCommit() - pNode.getCommittedIndex();
+                    Assertions.assertTrue(size > 0, "Here error");
+
+                    if (size < 100) {
+                        List<LogEntry> logEntryList = new ArrayList<>();
+                        for (long i = pNode.getCommittedIndex() + 1; i <= pRequest.getLeaderCommit(); i++) {
+                            LogEntry logEntry = pNode.getLogEntries().get(i);
+                            if (logEntry == null) {
+                                LOGGER.warn("index: {} not found log at node: {}", i, pNode.getLocalAddress().getPort());
+                            } else {
+                                logEntryList.add(logEntry);
+                            }
+                        }
+                        StateMachine.apply(logEntryList, pNode);
+                        return true;
+                    } else {
+                        // out of date too much, needs to install snapshot for synchronizing log
+                        return false;
+                    }
+                };
+                BiFunction<AppendEntriesRequest, Node, Boolean> func = (pRequest, pNode) -> {
+                    if (pRequest.getLeaderCommit() == pNode.getCommittedIndex()) {
+                        LOGGER.info("{} --> {}, First round, receive synchronize log", request.getLeaderId().getPort(), node.getLocalAddress().getPort());
+                        return firstRoundFunc.apply(pRequest, pNode);
+                    } else if (pRequest.getLeaderCommit() > pNode.getCommittedIndex()) {
+                        LOGGER.info("{} --> {}, Second round, apply log to statemachine", request.getLeaderId().getPort(), node.getLocalAddress().getPort());
+                        return secondRoundFunc.apply(pRequest, pNode);
+                    } else {
+                        LOGGER.warn("{} --> {}, AppendEntries request leader's commit index < follower's commit index, this should not happened", request.getLeaderId().getPort(), node.getLocalAddress().getPort());
+                        return false;
+                    }
                 };
                 switch (node.getRole()) {
                     case FOLLOWER:

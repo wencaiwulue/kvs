@@ -56,7 +56,7 @@ public class DB {
                 try {
                     expireKey = this.expireKeys.take();
                 } catch (InterruptedException ex) {
-                    LOGGER.error("expire key error, info: {}", ex.getMessage());
+                    LOGGER.warn("expire key error, info: {}", ex.getMessage());
                 }
                 if (expireKey != null) {
                     this.writeLock.lock();

@@ -32,6 +32,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -151,7 +152,7 @@ public class Node implements INode {
             for (NodeAddress remote : this.allNodeAddressExcludeMe()) {
                 Consumer<Response> consumer = res -> {
                     if (res != null) {
-                        LOGGER.info("{} --> {}, receive heartbeat response", remote.getPort(), this.localAddress.getPort());
+                        LOGGER.debug("{} --> {}, receive heartbeat response", remote.getPort(), this.localAddress.getPort());
                     }
                     // install snapshot
                     // 这里约定的是如果心跳包回复ErrorResponse, 说明是out too much的节点，需要install snapshot
@@ -168,28 +169,32 @@ public class Node implements INode {
                         }
                     }
                 };
-
-                AppendEntriesRequest request = new AppendEntriesRequest(this.currentTerm, this.localAddress, -1, -1, Collections.emptyList(), this.committedIndex);
-                Long nextIndex = this.getNextIndex().getOrDefault(remote, 1L);
-                if (nextIndex == this.logEntries.getLastLogIndex() + 1) {
+                AppendEntriesRequest request = AppendEntriesRequest.builder()
+                        .term(this.currentTerm)
+                        .leaderId(this.localAddress)
+                        .prevLogIndex(0)
+                        .prevLogTerm(0)
+                        .entries(Collections.emptyList())
+                        .leaderCommit(this.committedIndex)
+                        .build();
+                Long followerNextIndex = this.getNextIndex().getOrDefault(remote, this.logEntries.getLastLogIndex() + 1);
+                if (followerNextIndex == this.logEntries.getLastLogIndex() + 1) {
                     request.setPrevLogIndex(this.logEntries.getLastLogIndex());
                     request.setPrevLogTerm(this.logEntries.getLastLogTerm());
                 } else {
-                    LogEntry logEntry = this.logEntries.get(nextIndex - 1);
+                    LogEntry logEntry = this.logEntries.get(followerNextIndex - 1);
                     if (logEntry == null) {
-                        LOGGER.error("Log entry is null");
-//                            throw new NullPointerException("Log entry is null");
+                        LOGGER.warn("Log entry is null");
                     } else {
                         request.setPrevLogIndex(logEntry.getIndex());
                         request.setPrevLogIndex(logEntry.getTerm());
                     }
                 }
-                request.setEntries(this.logEntries.getRange(nextIndex, this.logEntries.getLastLogIndex() + 1));
                 RpcClient.doRequestAsync(remote, request, consumer);
             }
             this.nextElectTime = this.nextElectTime();
             this.nextHeartbeatTime = System.currentTimeMillis() + Constant.HEARTBEAT_RATE.toMillis();
-            LOGGER.info("Delay elect successfully");
+            LOGGER.debug("Delay elect successfully");
         };
         ThreadUtil.getScheduledThreadPool().scheduleAtFixedRate(this.heartbeatTask, 0, Constant.HEARTBEAT_RATE.toMillis(), TimeUnit.MILLISECONDS);
         this.start = true;
@@ -234,7 +239,7 @@ public class Node implements INode {
                         }
 
                         VoteResponse response = (VoteResponse) res;
-                        LOGGER.info("{} --> {}, vote response: {}", addr.getPort(), this.localAddress.getPort(), response.toString());
+                        LOGGER.debug("{} --> {}, vote response: {}", addr.getPort(), this.localAddress.getPort(), response.toString());
                         if (response.getTerm() > this.currentTerm) {
                             this.role = Role.FOLLOWER;
                             this.currentTerm = response.getTerm();
@@ -276,7 +281,7 @@ public class Node implements INode {
             }
             int mostTicketNum = (this.allNodeAddresses.size() / 2) + 1;
             if (ticket.getAcquire() >= mostTicketNum) {
-                LOGGER.info("Elect successfully，leader info: {}", this.localAddress);
+                LOGGER.info("Elect successfully, term:{}, leader info: {}", this.currentTerm, this.localAddress);
                 this.leaderAddress = this.localAddress;
                 this.role = Role.LEADER;
                 this.nextHeartbeatTime = -1;
@@ -293,7 +298,7 @@ public class Node implements INode {
             }
             this.nextElectTime = this.nextElectTime();
         } finally {
-            LOGGER.info("Elect spent time: {}ms", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
+            LOGGER.debug("Elect spent time: {}ms", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
             this.writeLock.unlock();
         }
     }
@@ -310,21 +315,32 @@ public class Node implements INode {
             long followerMatchIndex = this.matchIndex.getOrDefault(address, 0L);
             if (this.logEntries.getLastLogIndex() >= followerNextIndex) {
                 while (true) {
+                    LogEntry logEntry = this.logEntries.get(followerNextIndex - 1);
                     AppendEntriesRequest request = AppendEntriesRequest.builder()
                             .leaderId(this.localAddress)
                             .leaderCommit(this.getCommittedIndex())
                             .term(this.currentTerm)
+                            .prevLogIndex(Optional.ofNullable(logEntry).map(LogEntry::getIndex).orElse(0L))
+                            .prevLogTerm(Optional.ofNullable(logEntry).map(LogEntry::getTerm).orElse(0))
                             .entries(this.logEntries.getRange(followerNextIndex, this.logEntries.getLastLogIndex() + 1))
                             .build();
                     AppendEntriesResponse response = (AppendEntriesResponse) RpcClient.doRequest(address, request);
                     if (response != null && response.isSuccess()) {
+                        LOGGER.info("Leader replicate log to follower: {} successfully", address);
                         this.nextIndex.put(address, followerNextIndex);
                         this.matchIndex.put(address, followerMatchIndex);
                         break;
                     }
                     // If retry too much time, think about InstallSnapshot
                     followerNextIndex--;
+                    LOGGER.info("Leader replicate log to follower: {} retrying", address);
+                    if (followerNextIndex < 0) {
+                        LOGGER.warn("Leader replicate log to follower: {} failed", address);
+                        break;
+                    }
                 }
+            } else {
+                LOGGER.info("Don't needs to replicate log");
             }
         }
         // If there exists an N such that N > commitIndex, a majority
@@ -341,7 +357,10 @@ public class Node implements INode {
                 .filter(e -> e.getValue().size() >= majority)
                 .max(Comparator.comparingLong(Map.Entry::getKey))
                 .map(Map.Entry::getKey)
-                .ifPresent(this::setCommittedIndex);
+                .ifPresent(N -> {
+                    LOGGER.info("Found a N: {}, meet the requirements", N);
+                    this.committedIndex = N;
+                });
     }
 
     public boolean isLeader() {

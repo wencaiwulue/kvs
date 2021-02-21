@@ -15,7 +15,6 @@ import rpc.model.requestresponse.AppendEntriesResponse;
 import rpc.netty.RpcClient;
 
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -35,7 +34,7 @@ public class StateMachine {
     public static void apply(List<LogEntry> entries, Node node) {
         // apply log to db
         for (LogEntry entry : entries) {
-            writeLogToDB(node, entry);
+            writeLogToStatemachine(node, entry);
         }
         // push commitIndex
         long lastLogIndex = node.getLogEntries().getLastLogIndex();
@@ -43,8 +42,15 @@ public class StateMachine {
         node.setLastAppliedIndex(lastLogIndex);
 
         if (node.isLeader()) {
-            // notify peer to apply log to statemachine
-            AppendEntriesRequest request = new AppendEntriesRequest(node.getCurrentTerm(), node.getLeaderAddress(), lastLogIndex, node.getLogEntries().getLastLogTerm(), Collections.emptyList(), node.getCommittedIndex());
+            // Second round, notify peer to apply log to statemachine
+            AppendEntriesRequest request = AppendEntriesRequest.builder()
+                    .term(node.getCurrentTerm())
+                    .leaderId(node.getLeaderAddress())
+                    .prevLogIndex(lastLogIndex)
+                    .prevLogTerm(node.getLogEntries().getLastLogTerm())
+                    .entries(entries)
+                    .leaderCommit(node.getCommittedIndex())
+                    .build();
             for (NodeAddress remote : node.allNodeAddressExcludeMe()) {
                 node.getMatchIndex().put(remote, lastLogIndex);
                 node.getNextIndex().put(remote, lastLogIndex + 1);
@@ -62,7 +68,7 @@ public class StateMachine {
     }
 
     // use strategy mode
-    public static void writeLogToDB(Node node, LogEntry entry) {
+    public static void writeLogToStatemachine(Node node, LogEntry entry) {
         for (Service service : services) {
             if (service.supports(entry.getOperation())) {
                 service.service(node, entry);

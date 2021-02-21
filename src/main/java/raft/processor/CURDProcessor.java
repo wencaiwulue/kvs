@@ -64,13 +64,13 @@ public class CURDProcessor implements Processor {
             }
             return new CURDResponse(true, values);
         }
+        if (!node.isLeader()) {
+            LOGGER.info("Redirect to leader: {},  current node: {}, role: {}", node.getLeaderAddress().getPort(), node.getLocalAddress().getPort(), node.getRole());
+            return RpcClient.doRequest(node.getLeaderAddress(), req); // redirect to leader
+        }
 
         node.getWriteLock().lock();
         try {
-            if (!node.isLeader()) {
-                LOGGER.warn("Redirect to leader: {},  current node: {}, role: {}", node.getLeaderAddress().getPort(), node.getLocalAddress().getPort(), node.getRole());
-                return RpcClient.doRequest(node.getLeaderAddress(), req); // redirect to leader
-            }
             LOGGER.info("Leader receive CURD request");
 
             List<LogEntry> logEntries = new ArrayList<>(request.getKey().length);
@@ -109,7 +109,14 @@ public class CURDProcessor implements Processor {
                         latch.countDown();
                     }
                 };
-                AppendEntriesRequest entriesRequest = new AppendEntriesRequest(node.getCurrentTerm(), node.getLocalAddress(), node.getLastAppliedIndex(), node.getLogEntries().getLastLogTerm(), logEntries, node.getCommittedIndex());
+                AppendEntriesRequest entriesRequest = AppendEntriesRequest.builder()
+                        .term(node.getCurrentTerm())
+                        .leaderId(node.getLocalAddress())
+                        .prevLogIndex(node.getLastAppliedIndex())
+                        .prevLogTerm(node.getLogEntries().getLastLogTerm())
+                        .entries(logEntries)
+                        .leaderCommit(node.getCommittedIndex())
+                        .build();
                 requestIds.add(entriesRequest.getRequestId());
                 // First round, leader notify peers to append log
                 RpcClient.doRequestAsync(peerAddress, entriesRequest, c);
@@ -127,7 +134,8 @@ public class CURDProcessor implements Processor {
                 return new CURDResponse(false, null);
             }
 
-            if (ai.get() >= (node.getAllNodeAddresses().size() / 2 + 1)) { // more than half peer already write to log
+            // more than half peer already write to log
+            if (ai.get() >= (node.getAllNodeAddresses().size() / 2 + 1)) {
                 // Second round, leader notify peers to apply log to statemachine
                 StateMachine.apply(logEntries, node);
                 LOGGER.info("AppendEntries received most peer response, applying data to state machine");

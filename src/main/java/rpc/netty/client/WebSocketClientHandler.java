@@ -45,13 +45,13 @@ public class WebSocketClientHandler extends SimpleChannelInboundHandler<Object> 
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
-        LOGGER.info("WebSocket Client disconnected!");
+        LOGGER.debug("WebSocket Client disconnected!");
         RpcClient.getConnection()
                 .entrySet()
                 .stream()
                 .filter(e -> e.getValue() == ctx.channel())
                 .findFirst()
-                .ifPresent(entry -> LOGGER.info("with server: " + entry.getKey().toString()));
+                .ifPresent(entry -> LOGGER.debug("with server: " + entry.getKey().toString()));
     }
 
     @Override
@@ -60,10 +60,10 @@ public class WebSocketClientHandler extends SimpleChannelInboundHandler<Object> 
         if (!handShaker.isHandshakeComplete()) {
             try {
                 handShaker.finishHandshake(ch, (FullHttpResponse) msg);
-                LOGGER.info("WebSocket Client connected!");
+                LOGGER.debug("WebSocket Client connected!");
                 handshakeFuture.setSuccess();
             } catch (WebSocketHandshakeException e) {
-                LOGGER.error("WebSocket Client failed to connect");
+                LOGGER.warn("WebSocket Client failed to connect");
                 handshakeFuture.setFailure(e);
             }
             return;
@@ -95,7 +95,7 @@ public class WebSocketClientHandler extends SimpleChannelInboundHandler<Object> 
             byte[] bytes = new byte[buffer.capacity()];
             buffer.readBytes(bytes);
             Object object = FSTUtil.getBinaryConf().asObject(bytes);
-            LOGGER.info("{} --> {} message: {}", remote.getPort(), WebSocketServer.LOCAL_ADDRESS.getPort(), object.toString());
+            LOGGER.debug("{} --> {} message: {}", remote.getPort(), WebSocketServer.LOCAL_ADDRESS.getPort(), object.toString());
             if (object instanceof Response) {
                 RpcClient.addResponse(((Response) object).getRequestId(), (Response) object);
             } else if (object instanceof Request) {

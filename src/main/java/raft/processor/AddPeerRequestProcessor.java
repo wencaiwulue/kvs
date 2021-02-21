@@ -47,7 +47,7 @@ public class AddPeerRequestProcessor implements Processor {
 
         if (!node.isLeader()) {
             if (node.getLeaderAddress() == null) {
-                LOGGER.error("Not a cluster, just need to add to myself peer");
+                LOGGER.info("Not a cluster, just need to add to myself peer");
                 node.getAllNodeAddresses().add(request.getPeer());
                 return new AddPeerResponse();// exit 2
             } else {
@@ -71,8 +71,15 @@ public class AddPeerRequestProcessor implements Processor {
             // need to replicate log
             ThreadUtil.getThreadPool().submit(() -> {
                 node.leaderReplicateLog();
-                List<LogEntry> entries = node.getLogEntries().getRange(1, node.getLogEntries().getLastLogIndex() + 1);
-                AppendEntriesRequest appendEntriesRequest = new AppendEntriesRequest(node.getCurrentTerm(), node.getLocalAddress(), 0, 0, entries, node.getCommittedIndex());
+                /*List<LogEntry> entries = node.getLogEntries().getRange(1, node.getLogEntries().getLastLogIndex() + 1);
+                AppendEntriesRequest appendEntriesRequest = AppendEntriesRequest.builder()
+                        .term(node.getCurrentTerm())
+                        .leaderId(node.getLocalAddress())
+                        .prevLogIndex(0)
+                        .prevLogTerm(0)
+                        .entries(entries)
+                        .leaderCommit(node.getCommittedIndex())
+                        .build();
                 RpcClient.doRequestAsync(request.getPeer(), appendEntriesRequest, re -> {
                     if (re instanceof AppendEntriesResponse) {
                         if (!((AppendEntriesResponse) re).isSuccess()) {
@@ -89,7 +96,7 @@ public class AddPeerRequestProcessor implements Processor {
                             }
                         });
                     }
-                });
+                });*/
             });
             return new AddPeerResponse();
         }

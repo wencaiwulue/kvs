@@ -54,7 +54,7 @@ public class WebSocketServerHandler extends SimpleChannelInboundHandler<Object> 
         } else {
             handShaker.handshake(ctx.channel(), req);
             RpcClient.addConnection(remoteAddress, ctx.channel());
-            LOGGER.info("{} --> {} create a socket connection", localport, WebSocketServer.LOCAL_ADDRESS.getPort());
+            LOGGER.debug("{} --> {} create a socket connection", localport, WebSocketServer.LOCAL_ADDRESS.getPort());
         }
     }
 
@@ -78,15 +78,15 @@ public class WebSocketServerHandler extends SimpleChannelInboundHandler<Object> 
                 LOGGER.warn("object is null");
                 return;
             }
-            LOGGER.info("{} --> {} message: {}", remoteAddress.getPort(), WebSocketServer.LOCAL_ADDRESS.getPort(), object.toString());
+            LOGGER.debug("{} --> {} message: {}", remoteAddress.getPort(), WebSocketServer.LOCAL_ADDRESS.getPort(), object.toString());
             if (object instanceof Response) {
                 RpcClient.addResponse(((Response) object).getRequestId(), (Response) object);
             } else if (object instanceof Request) {
                 ThreadUtil.getThreadPool().submit(() -> {
                     Response response = WebSocketServer.node.handle((Request) object);
-                    LOGGER.info("{} --> {} message: {}", remoteAddress.getPort(), WebSocketServer.LOCAL_ADDRESS.getPort(), object.toString());
+                    LOGGER.debug("{} --> {} message: {}", remoteAddress.getPort(), WebSocketServer.LOCAL_ADDRESS.getPort(), object.toString());
                     if (response != null) {
-                        LOGGER.info("{} --> {} response: {}", WebSocketServer.LOCAL_ADDRESS.getPort(), remoteAddress.getPort(), response.toString());
+                        LOGGER.debug("{} --> {} response: {}", WebSocketServer.LOCAL_ADDRESS.getPort(), remoteAddress.getPort(), response.toString());
                         byte[] byteArray = FSTUtil.getBinaryConf().asByteArray(response);
                         ctx.writeAndFlush(new BinaryWebSocketFrame(Unpooled.wrappedBuffer(byteArray)))
                                 .addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
@@ -98,7 +98,7 @@ public class WebSocketServerHandler extends SimpleChannelInboundHandler<Object> 
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        LOGGER.error("error info: {}", cause.getMessage());
+        LOGGER.warn("error info: {}", cause.getMessage());
         cause.printStackTrace();
         ctx.close();
     }

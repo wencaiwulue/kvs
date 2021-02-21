@@ -27,7 +27,7 @@ public class VoteRequestProcessor implements Processor {
         node.getWriteLock().lock();
         try {
             VoteRequest request = (VoteRequest) req;
-            LOGGER.info("{} --> {}, vote request info: {}", request.getCandidateId().getPort(), node.getLocalAddress().getPort(), request);
+            LOGGER.debug("{} --> {}, vote request info: {}", request.getCandidateId().getPort(), node.getLocalAddress().getPort(), request);
             int i = Long.compare(request.getTerm(), node.getCurrentTerm());
             int j = Long.compare(request.getLastLogTerm(), node.getLogEntries().getLastLogTerm());
             if (j == 0) {

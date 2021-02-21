@@ -37,7 +37,7 @@ import java.util.stream.Collectors;
  */
 
 public class MapStorage<K, V> implements StorageEngine<K, V> {
-    private static final Logger log = LoggerFactory.getLogger(MapStorage.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(MapStorage.class);
 
     private final Path dir;
     public final ConcurrentHashMap<K, V> map;
@@ -95,7 +95,7 @@ public class MapStorage<K, V> implements StorageEngine<K, V> {
                 BackupUtil.readFromDisk(this, dbFile);
             }
         } catch (IOException e) {
-            log.error(e.getMessage());
+            LOGGER.error(e.getMessage());
         } finally {
             this.writeLock.unlock();
         }

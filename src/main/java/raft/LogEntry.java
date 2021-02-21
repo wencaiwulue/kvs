@@ -4,6 +4,7 @@ package raft;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import lombok.ToString;
 import raft.enums.CURDOperation;
 
 import java.io.Serializable;
@@ -15,6 +16,7 @@ import java.io.Serializable;
 @Getter
 @Setter
 @NoArgsConstructor
+@ToString
 public class LogEntry implements Serializable {
     private long index;
     private int term;
