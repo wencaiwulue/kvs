@@ -14,7 +14,7 @@ import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import rpc.model.requestresponse.AddPeerRequest;
 import rpc.model.requestresponse.Request;
-import rpc.netty.client.WebSocketClientHandler;
+import rpc.netty.handler.WebSocketClientHandler;
 import rpc.netty.config.Constant;
 import util.FSTUtil;
 

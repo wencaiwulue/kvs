@@ -7,6 +7,8 @@ import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.timeout.IdleStateHandler;
+import rpc.netty.handler.HeartbeatHandler;
+import rpc.netty.handler.WebSocketServerHandler;
 
 import java.util.concurrent.TimeUnit;
 

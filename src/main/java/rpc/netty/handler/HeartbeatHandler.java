@@ -1,4 +1,4 @@
-package rpc.netty.server;
+package rpc.netty.handler;
 
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
