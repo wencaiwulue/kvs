@@ -207,6 +207,8 @@ public class Node implements INode {
         if (this.stateMachine.getDb() instanceof MapStorage) {
             ((MapStorage<?, ?>) this.stateMachine.getDb()).writeDataToDisk();
         }
+        ThreadUtil.getThreadPool().shutdown();
+        ThreadUtil.getScheduledThreadPool().shutdown();
     }
 
     @SuppressWarnings("NonAtomicOperationOnVolatileField")

@@ -20,9 +20,9 @@ import java.io.Serializable;
 public class LogEntry implements Serializable {
     private long index;
     private int term;
-    private  CURDOperation operation;
-    private  String key;
-    private  Object value;
+    private CURDOperation operation;
+    private String key;
+    private Object value;
 
     public LogEntry(long index, int term, CURDOperation operation, String key, Object value) {
         this.index = index;
