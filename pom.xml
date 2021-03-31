@@ -15,7 +15,7 @@
         <lombok.version>1.18.12</lombok.version>
         <fst.version>2.57</fst.version>
         <kryo.version>5.0.0-RC5</kryo.version>
-        <guava.version>28.2-jre</guava.version>
+        <guava.version>29.0-jre</guava.version>
         <jedis.version>2.9.3</jedis.version>
         <junit.jupiter.version>5.7.0</junit.jupiter.version>
         <ecplise-collection.version>10.2.0</ecplise-collection.version>
