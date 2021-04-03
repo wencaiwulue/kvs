@@ -1,9 +1,7 @@
 package db.config;
 
 import com.google.common.collect.Range;
-import rpc.netty.server.WebSocketServer;
 
-import java.nio.file.Path;
 import java.time.Duration;
 
 /**
@@ -13,9 +11,6 @@ import java.time.Duration;
  * @since 5/3/2020 16:21
  */
 public interface Config {
-
-    Path DB_DIR = Path.of(System.getProperty("user.dir"), "data", String.valueOf(WebSocketServer.LOCAL_ADDRESS.getPort()), "db");
-    Path LOG_DIR = Path.of(System.getProperty("user.dir"), "data", String.valueOf(WebSocketServer.LOCAL_ADDRESS.getPort()), "log");
 
     Duration APPEND_RATE = Duration.ofSeconds(1); // append per second
     Duration SNAPSHOT_RATE = Duration.ofMinutes(1); // snapshot per second

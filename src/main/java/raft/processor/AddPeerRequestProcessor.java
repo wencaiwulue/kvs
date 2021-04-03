@@ -2,14 +2,10 @@ package raft.processor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import raft.LogEntry;
 import raft.Node;
 import raft.NodeAddress;
 import rpc.model.requestresponse.*;
-import rpc.netty.RpcClient;
 import util.ThreadUtil;
-
-import java.util.List;
 
 /**
  * @author naison
@@ -55,7 +51,7 @@ public class AddPeerRequestProcessor implements Processor {
                     node.getAllNodeAddresses().add(request.getPeer());
                     return new AddPeerResponse();// exit 3
                 } else {
-                    return RpcClient.doRequest(node.getLeaderAddress(), request);
+                    return node.getRpcClient().doRequest(node.getLeaderAddress(), request);
                 }
             }
         } else {
@@ -63,11 +59,11 @@ public class AddPeerRequestProcessor implements Processor {
             // each node receive leader command, will send
             request.sender = node.getLeaderAddress();
             for (NodeAddress nodeAddress : node.allNodeAddressExcludeMe()) {
-                RpcClient.doRequestAsync(nodeAddress, request, null);
+                node.getRpcClient().doRequestAsync(nodeAddress, request, null);
             }
             node.getAllNodeAddresses().add(request.getPeer());
             // tell fresh bird to add all nodes
-            RpcClient.doRequestAsync(request.getPeer(), new SynchronizeStateRequest(node.getLocalAddress(), node.getAllNodeAddresses()), null);
+            node.getRpcClient().doRequestAsync(request.getPeer(), new SynchronizeStateRequest(node.getLocalAddress(), node.getAllNodeAddresses()), null);
             // need to replicate log
             ThreadUtil.getThreadPool().submit(() -> {
                 node.leaderReplicateLog();

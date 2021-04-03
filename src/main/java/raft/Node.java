@@ -1,7 +1,6 @@
 package raft;
 
 import com.google.common.collect.Sets;
-import db.config.Config;
 import db.core.DB;
 import db.core.LogDB;
 import db.core.StateMachine;
@@ -14,28 +13,12 @@ import org.slf4j.LoggerFactory;
 import raft.config.Constant;
 import raft.enums.Role;
 import raft.processor.Processor;
-import rpc.model.requestresponse.AppendEntriesRequest;
-import rpc.model.requestresponse.AppendEntriesResponse;
-import rpc.model.requestresponse.ErrorResponse;
-import rpc.model.requestresponse.InstallSnapshotRequest;
-import rpc.model.requestresponse.InstallSnapshotResponse;
-import rpc.model.requestresponse.Request;
-import rpc.model.requestresponse.Response;
-import rpc.model.requestresponse.SynchronizeStateRequest;
-import rpc.model.requestresponse.VoteRequest;
-import rpc.model.requestresponse.VoteResponse;
+import rpc.model.requestresponse.*;
 import rpc.netty.RpcClient;
 import util.ThreadUtil;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.ServiceLoader;
-import java.util.Set;
+import java.nio.file.Path;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -95,15 +78,17 @@ public class Node implements INode {
     private Runnable heartbeatTask;
     private Runnable electTask;
 
-    public static Node of(NodeAddress nodeAddress) {
-        return new Node(nodeAddress, Sets.newHashSet(nodeAddress));
+    private RpcClient rpcClient;
+
+    public static Node of(NodeAddress local) {
+        return new Node(local, Sets.newHashSet(local));
     }
 
-    public Node(NodeAddress localAddress, Set<NodeAddress> allNodeAddresses) {
-        this.localAddress = localAddress;
+    public Node(NodeAddress local, Set<NodeAddress> allNodeAddresses) {
+        this.localAddress = local;
         this.allNodeAddresses = allNodeAddresses;
-        this.stateMachine = new StateMachine(new DB(Config.DB_DIR));
-        this.logEntries = new LogDB(Config.LOG_DIR);
+        this.stateMachine = new StateMachine(new DB(Path.of(System.getProperty("user.dir"), "data", String.valueOf(local.getPort()), "db")));
+        this.logEntries = new LogDB(Path.of(System.getProperty("user.dir"), "data", String.valueOf(local.getPort()), "log"));
         // initialized to leader last log index + 1
         this.nextIndex = this.allNodeAddresses.stream().collect(Collectors.toMap(e -> e, e -> this.logEntries.getLastLogIndex() + 1));
         // initialized to 0, increases monotonically
@@ -112,6 +97,7 @@ public class Node implements INode {
         // read from persistent storage, write before return result to client
         this.currentTerm = this.logEntries.getCurrentTerm();
         this.lastVoteFor = this.logEntries.getLastVoteFor();
+        this.rpcClient = new RpcClient(local.getSocketAddress(), this::handle);
     }
 
     {
@@ -158,7 +144,7 @@ public class Node implements INode {
                     // install snapshot
                     // 这里约定的是如果心跳包回复ErrorResponse, 说明是out too much的节点，需要install snapshot
                     if (res instanceof ErrorResponse) {
-                        InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) RpcClient.doRequest(remote, new InstallSnapshotRequest(this.currentTerm, this.localAddress, 0, 0, 0, null, true));
+                        InstallSnapshotResponse snapshotResponse = (InstallSnapshotResponse) rpcClient.doRequest(remote, new InstallSnapshotRequest(this.currentTerm, this.localAddress, 0, 0, 0, null, true));
                         if (snapshotResponse == null || snapshotResponse.getTerm() < this.currentTerm) {
                             LOGGER.error("Install snapshot error, should retry or not ?");
                         }
@@ -191,7 +177,7 @@ public class Node implements INode {
                         request.setPrevLogIndex(logEntry.getTerm());
                     }
                 }
-                RpcClient.doRequestAsync(remote, request, consumer);
+                rpcClient.doRequestAsync(remote, request, consumer);
             }
             this.nextElectTime = this.nextElectTime();
             this.nextHeartbeatTime = System.currentTimeMillis() + Constant.HEARTBEAT_RATE.toMillis();
@@ -260,7 +246,7 @@ public class Node implements INode {
                 };
                 VoteRequest voteRequest = new VoteRequest(this.currentTerm, this.localAddress, this.logEntries.getLastLogIndex(), this.logEntries.getLastLogTerm());
                 requestIds.add(voteRequest.getRequestId());
-                RpcClient.doRequestAsync(addr, voteRequest, consumer);
+                rpcClient.doRequestAsync(addr, voteRequest, consumer);
             }
             try {
                 boolean success = latch.await(Constant.ELECT_RATE.toMillis(), TimeUnit.MILLISECONDS);
@@ -270,15 +256,15 @@ public class Node implements INode {
                     if (ticket.getAcquire() > 1) {
                         mayInterruptIfRunning.set(false);
                     }
-                    requestIds.forEach(e -> RpcClient.cancelRequest(e, mayInterruptIfRunning.get()));
+                    requestIds.forEach(e -> rpcClient.cancelRequest(e, mayInterruptIfRunning.get()));
                     LOGGER.error("elect timeout, cancel all task");
                 }
             } catch (InterruptedException ex) {
-                requestIds.forEach(e -> RpcClient.cancelRequest(e, true));
+                requestIds.forEach(e -> rpcClient.cancelRequest(e, true));
                 LOGGER.error("elect interrupted, cancel all task");
             }
             if (fail.getAcquire()) {
-                requestIds.forEach(e -> RpcClient.cancelRequest(e, true));
+                requestIds.forEach(e -> rpcClient.cancelRequest(e, true));
                 LOGGER.error("Elect failed, cancel all task");
                 return;
             }
@@ -290,7 +276,7 @@ public class Node implements INode {
                 this.nextHeartbeatTime = -1;
                 ThreadUtil.getThreadPool().submit(() -> {
                     this.heartbeatTask.run();
-                    this.allNodeAddressExcludeMe().forEach(e -> RpcClient.doRequestAsync(e, new SynchronizeStateRequest(this.getLocalAddress(), this.getAllNodeAddresses()), null));
+                    this.allNodeAddressExcludeMe().forEach(e -> rpcClient.doRequestAsync(e, new SynchronizeStateRequest(this.getLocalAddress(), this.getAllNodeAddresses()), null));
                     this.leaderReplicateLog();
                 });
                 // Reinitialized after election
@@ -327,7 +313,7 @@ public class Node implements INode {
                             .prevLogTerm(Optional.ofNullable(logEntry).map(LogEntry::getTerm).orElse(0))
                             .entries(this.logEntries.getRange(followerNextIndex, this.logEntries.getLastLogIndex() + 1))
                             .build();
-                    AppendEntriesResponse response = (AppendEntriesResponse) RpcClient.doRequest(address, request);
+                    AppendEntriesResponse response = (AppendEntriesResponse) rpcClient.doRequest(address, request);
                     if (response != null && response.isSuccess()) {
                         LOGGER.info("Leader replicate log to follower: {} successfully", address);
                         this.nextIndex.put(address, followerNextIndex);
@@ -370,11 +356,17 @@ public class Node implements INode {
         return this.localAddress.equals(this.leaderAddress) && this.role == Role.LEADER;
     }
 
-    public Response handle(Request request) {
-        if (!this.start || request == null) {
+    public Response handle(Object obj) {
+        if (!this.start || obj == null) {
+            return null;
+        }
+        if (obj instanceof Response) {
+            Response response = (Response) obj;
+            this.rpcClient.addResponse(response.getRequestId(), response);
             return null;
         }
 
+        Request request = (Request) obj;
         Response response = null;
         for (Processor processor : this.processors) {
             if (processor.supports(request)) {
@@ -430,7 +422,7 @@ public class Node implements INode {
             for (NodeAddress remote : this.allNodeAddressExcludeMe()) {
                 this.matchIndex.put(remote, lastLogIndex);
                 this.nextIndex.put(remote, lastLogIndex + 1);
-                RpcClient.doRequestAsync(remote, request, response -> {
+                rpcClient.doRequestAsync(remote, request, response -> {
                     if (response != null && ((AppendEntriesResponse) response).isSuccess()) {
                         this.getNextIndex().put(remote, lastLogIndex + 1);
                         this.getMatchIndex().put(remote, lastLogIndex);

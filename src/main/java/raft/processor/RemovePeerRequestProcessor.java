@@ -1,6 +1,5 @@
 package raft.processor;
 
-import db.core.storage.impl.MapStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import raft.Node;
@@ -9,7 +8,6 @@ import rpc.model.requestresponse.RemovePeerRequest;
 import rpc.model.requestresponse.RemovePeerResponse;
 import rpc.model.requestresponse.Request;
 import rpc.model.requestresponse.Response;
-import rpc.netty.RpcClient;
 
 /**
  * @author naison
@@ -47,7 +45,7 @@ public class RemovePeerRequestProcessor implements Processor {
                     return new RemovePeerResponse();// exit 2
                 } else {
                     // Redirect to leader
-                    return RpcClient.doRequest(node.getLeaderAddress(), request);
+                    return node.getRpcClient().doRequest(node.getLeaderAddress(), request);
                 }
             }
         } else {
@@ -55,7 +53,7 @@ public class RemovePeerRequestProcessor implements Processor {
             // each node receive leader command, will ask the remove peer to remove itself
             request.setSender(node.getLocalAddress());
             for (NodeAddress nodeAddress : node.allNodeAddressExcludeMe()) {
-                RpcClient.doRequestAsync(nodeAddress, request, null);
+                node.getRpcClient().doRequestAsync(nodeAddress, request, null);
             }
             r.run();
             return new RemovePeerResponse();

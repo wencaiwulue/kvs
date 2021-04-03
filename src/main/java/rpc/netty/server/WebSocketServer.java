@@ -10,21 +10,25 @@ import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import raft.INode;
-import util.ThreadUtil;
+import rpc.model.requestresponse.Response;
 
 import javax.net.ssl.SSLException;
 import java.net.InetSocketAddress;
 import java.security.cert.CertificateException;
+import java.util.function.Function;
 
 public final class WebSocketServer {
     private static final Logger LOGGER = LoggerFactory.getLogger(WebSocketServer.class);
 
-    public static final InetSocketAddress LOCAL_ADDRESS = new InetSocketAddress("127.0.0.1", Integer.parseInt(System.getenv("port")));
-    public static INode node;
+    public InetSocketAddress localAddress;
+    public Function<Object, Response> function;
 
-    public static void main(INode iNode) {
-        node = iNode;
+    public WebSocketServer(InetSocketAddress localAddress, Function<Object, Response> function) {
+        this.localAddress = localAddress;
+        this.function = function;
+    }
+
+    public void start() {
 
         EventLoopGroup bossGroup = new NioEventLoopGroup(1);
         EventLoopGroup workerGroup = new NioEventLoopGroup();
@@ -35,11 +39,10 @@ public final class WebSocketServer {
             ServerBootstrap bootstrap = new ServerBootstrap();
             bootstrap.group(bossGroup, workerGroup)
                     .channel(NioServerSocketChannel.class)
-                    .childHandler(new WebSocketServerInitializer(sslCtx));
+                    .childHandler(new WebSocketServerInitializer(sslCtx, localAddress, function));
 
-            Channel channel = bootstrap.bind(LOCAL_ADDRESS.getPort()).sync().channel();
-            LOGGER.info("Server started on port(s): {} (websocket)", LOCAL_ADDRESS.getPort());
-            ThreadUtil.getThreadPool().execute(iNode::start);
+            Channel channel = bootstrap.bind(localAddress.getPort()).sync().channel();
+            LOGGER.info("Server started on port(s): {} (websocket)", localAddress.getPort());
             channel.closeFuture().sync();
         } catch (CertificateException | InterruptedException | SSLException e) {
             LOGGER.error(e.getMessage());

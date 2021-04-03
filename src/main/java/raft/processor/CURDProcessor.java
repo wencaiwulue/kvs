@@ -65,7 +65,7 @@ public class CURDProcessor implements Processor {
         }
         if (!node.isLeader()) {
             LOGGER.info("Redirect to leader: {},  current node: {}, role: {}", node.getLeaderAddress().getPort(), node.getLocalAddress().getPort(), node.getRole());
-            return RpcClient.doRequest(node.getLeaderAddress(), req); // redirect to leader
+            return node.getRpcClient().doRequest(node.getLeaderAddress(), req); // redirect to leader
         }
 
         node.getWriteLock().lock();
@@ -118,17 +118,17 @@ public class CURDProcessor implements Processor {
                         .build();
                 requestIds.add(entriesRequest.getRequestId());
                 // First round, leader notify peers to append log
-                RpcClient.doRequestAsync(peerAddress, entriesRequest, c);
+                node.getRpcClient().doRequestAsync(peerAddress, entriesRequest, c);
             }
             try {
                 boolean await = latch.await(1000, TimeUnit.MILLISECONDS);
                 if (!await) {
                     LOGGER.warn("Waiting for appending entries response timeout");
-                    requestIds.forEach(e -> RpcClient.cancelRequest(e, true));
+                    requestIds.forEach(e -> node.getRpcClient().cancelRequest(e, true));
                     return new CURDResponse(false, null);
                 }
             } catch (InterruptedException ex) {
-                requestIds.forEach(e -> RpcClient.cancelRequest(e, true));
+                requestIds.forEach(e -> node.getRpcClient().cancelRequest(e, true));
                 LOGGER.warn("Waiting for response was interrupted, info: {}", ex.getMessage());
                 return new CURDResponse(false, null);
             }

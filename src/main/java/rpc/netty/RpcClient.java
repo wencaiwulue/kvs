@@ -21,6 +21,7 @@ import java.net.InetSocketAddress;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -41,19 +42,24 @@ public class RpcClient {
     private static final Map<Integer, Consumer<Response>> RESPONSE_CONSUMER = new ConcurrentHashMap<>();
     private static final Map<Integer, Future<?>> RUNNING = new ConcurrentHashMap<>();
 
-    static {
-        ThreadUtil.getThreadPool().execute(RpcClient::writeRequest);
+    private final InetSocketAddress local;
+    private final Function<Object, Response> function;
+
+    public RpcClient(InetSocketAddress local, Function<Object, Response> function) {
+        this.local = local;
+        this.function = function;
+        ThreadUtil.getThreadPool().execute(this::writeRequest);
     }
 
     public static void addConnection(InetSocketAddress remoteAddress, Channel channel) {
         CONNECTIONS.put(remoteAddress, channel);
     }
 
-    public static Map<InetSocketAddress, Channel> getConnection() {
+    public Map<InetSocketAddress, Channel> getConnection() {
         return ImmutableMap.copyOf(CONNECTIONS);
     }
 
-    public static void addResponse(int requestId, Response response) {
+    public void addResponse(int requestId, Response response) {
         RESPONSE_MAP.put(requestId, response);
         CountDownLatch latch = RESPONSE_MAP_LOCK.remove(requestId);
         Consumer<Response> consumer = RESPONSE_CONSUMER.remove(requestId);
@@ -64,7 +70,7 @@ public class RpcClient {
         }
     }
 
-    private static Channel getConnection(InetSocketAddress remoteAddress) {
+    private Channel getConnection(InetSocketAddress remoteAddress) {
         if (remoteAddress == null) {
             return null;
         }
@@ -76,9 +82,9 @@ public class RpcClient {
         if (supplier.get()) {
             synchronized (remoteAddress.toString().intern()) {
                 if (supplier.get()) {
-                    Channel channel = WebSocketClient.doConnection(remoteAddress);
+                    Channel channel = new WebSocketClient(local, function).doConnection(remoteAddress);
                     if (channel != null) {
-                        RpcClient.addConnection(remoteAddress, channel);
+                        addConnection(remoteAddress, channel);
                     }
                 }
             }
@@ -87,7 +93,7 @@ public class RpcClient {
     }
 
     // todo delete request from request queue
-    public static void cancelRequest(int requestId, boolean mayInterruptIfRunning) {
+    public void cancelRequest(int requestId, boolean mayInterruptIfRunning) {
         Consumer<Response> consumer = RESPONSE_CONSUMER.remove(requestId);
         Future<?> remove = RUNNING.remove(requestId);
         if (remove != null) {
@@ -97,7 +103,7 @@ public class RpcClient {
         }
     }
 
-    public static void doRequestAsync(NodeAddress remoteAddress, Request request, Consumer<Response> nextTodo) {
+    public void doRequestAsync(NodeAddress remoteAddress, Request request, Consumer<Response> nextTodo) {
         if (remoteAddress == null) {
             return;
         }
@@ -112,11 +118,11 @@ public class RpcClient {
         }
     }
 
-    public static Response doRequest(NodeAddress remoteAddress, Request request) {
+    public Response doRequest(NodeAddress remoteAddress, Request request) {
         return doRequest(remoteAddress.getSocketAddress(), request);
     }
 
-    public static Response doRequest(InetSocketAddress remoteAddress, final Request request) {
+    public Response doRequest(InetSocketAddress remoteAddress, final Request request) {
         if (remoteAddress == null) {
             return null;
         }
@@ -143,7 +149,7 @@ public class RpcClient {
         return RESPONSE_MAP.remove(request.getRequestId());
     }
 
-    private static void writeRequest() {
+    private void writeRequest() {
         //noinspection InfiniteLoopStatement
         while (true) {
             SocketRequest socketRequest = null;

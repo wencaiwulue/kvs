@@ -20,6 +20,7 @@ import util.FSTUtil;
 import util.ThreadUtil;
 
 import java.net.InetSocketAddress;
+import java.util.function.Function;
 
 @ChannelHandler.Sharable
 public class WebSocketServerHandler extends SimpleChannelInboundHandler<Object> {
@@ -27,6 +28,13 @@ public class WebSocketServerHandler extends SimpleChannelInboundHandler<Object> 
 
     private WebSocketServerHandshaker handShaker;
     private InetSocketAddress remoteAddress;
+    private final InetSocketAddress localAddress;
+    private final Function<Object, Response> function;
+
+    public WebSocketServerHandler(InetSocketAddress localAddress, Function<Object, Response> consume) {
+        this.localAddress = localAddress;
+        this.function = consume;
+    }
 
     @Override
     public void channelRead0(ChannelHandlerContext ctx, Object msg) {
@@ -55,7 +63,7 @@ public class WebSocketServerHandler extends SimpleChannelInboundHandler<Object> 
         } else {
             handShaker.handshake(ctx.channel(), req);
             RpcClient.addConnection(remoteAddress, ctx.channel());
-            LOGGER.debug("{} --> {} create a socket connection", localport, WebSocketServer.LOCAL_ADDRESS.getPort());
+            LOGGER.debug("{} --> {} create a socket connection", localport, localAddress.getPort());
         }
     }
 
@@ -79,15 +87,15 @@ public class WebSocketServerHandler extends SimpleChannelInboundHandler<Object> 
                 LOGGER.warn("object is null");
                 return;
             }
-            LOGGER.debug("{} --> {} message: {}", remoteAddress.getPort(), WebSocketServer.LOCAL_ADDRESS.getPort(), object.toString());
+            LOGGER.debug("{} --> {} message: {}", remoteAddress.getPort(), localAddress.getPort(), object.toString());
             if (object instanceof Response) {
-                RpcClient.addResponse(((Response) object).getRequestId(), (Response) object);
+                function.apply(object);
             } else if (object instanceof Request) {
                 ThreadUtil.getThreadPool().submit(() -> {
-                    Response response = WebSocketServer.node.handle((Request) object);
-                    LOGGER.debug("{} --> {} message: {}", remoteAddress.getPort(), WebSocketServer.LOCAL_ADDRESS.getPort(), object.toString());
+                    Response response = function.apply(object);
+                    LOGGER.debug("{} --> {} message: {}", remoteAddress.getPort(), localAddress.getPort(), object.toString());
                     if (response != null) {
-                        LOGGER.debug("{} --> {} response: {}", WebSocketServer.LOCAL_ADDRESS.getPort(), remoteAddress.getPort(), response.toString());
+                        LOGGER.debug("{} --> {} response: {}", localAddress.getPort(), remoteAddress.getPort(), response.toString());
                         byte[] byteArray = FSTUtil.getBinaryConf().asByteArray(response);
                         ctx.writeAndFlush(new BinaryWebSocketFrame(Unpooled.wrappedBuffer(byteArray)))
                                 .addListener(ChannelFutureListener.CLOSE_ON_FAILURE);

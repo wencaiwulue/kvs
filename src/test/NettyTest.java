@@ -31,14 +31,15 @@ public class NettyTest {
         URI uri = new URI(URL);
 
         SslContext sslCtx = SslContextBuilder.forClient().trustManager(InsecureTrustManagerFactory.INSTANCE).build();
+        InetSocketAddress local = new InetSocketAddress("127.0.0.1", 8445);
 
         EventLoopGroup group = new NioEventLoopGroup();
         try {
             DefaultHttpHeaders httpHeaders = new DefaultHttpHeaders();
-            httpHeaders.add("localhost", "127.0.0.1");
-            httpHeaders.add("localport", 8445);
+            httpHeaders.add("localhost", local.getHostName());
+            httpHeaders.add("localport", local.getPort());
             WebSocketClientHandshaker handshake = WebSocketClientHandshakerFactory.newHandshaker(uri, WebSocketVersion.V13, Constant.WEBSOCKET_PROTOCOL, true, httpHeaders);
-            WebSocketClientHandler handler = new WebSocketClientHandler(handshake, new InetSocketAddress(uri.getHost(), uri.getPort()));
+            WebSocketClientHandler handler = new WebSocketClientHandler(handshake, new InetSocketAddress(uri.getHost(), uri.getPort()), local, request -> null);
 
             Bootstrap bootstrap = new Bootstrap();
             bootstrap
