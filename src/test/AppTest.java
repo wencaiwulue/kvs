@@ -26,13 +26,6 @@ class AppTest {
     void addPeer1And2And3() throws Exception {
         NettyClientTest.sendAsync(p8001, new AddPeerRequest(new NodeAddress(p8002)));
         NettyClientTest.sendAsync(p8001, new AddPeerRequest(new NodeAddress(p8003)));
-//        NettyClientTest.sendAsync(p8002, new AddPeerRequest(new NodeAddress(p8001)));
-    }
-
-    @Test
-    void addPeer1And2() throws Exception {
-        NettyClientTest.sendAsync(p8001, new AddPeerRequest(new NodeAddress(p8002)));
-        NettyClientTest.sendAsync(p8002, new AddPeerRequest(new NodeAddress(p8001)));
     }
 
     @Test
@@ -67,8 +60,8 @@ class AppTest {
 
     @Test
     void addData() throws Exception {
-        Response res = NettyClientTest.sendSync(p8001, new CURDRequest(CURDOperation.set, new String[]{"a"}, new Object[]{100}));
-        System.out.println(((CURDResponse) res).success);
+        int value = 16;
+        NettyClientTest.sendSync(p8003, new CURDRequest(CURDOperation.set, new String[]{"a"}, new Object[]{value}));
     }
 
     @Test
@@ -78,14 +71,8 @@ class AppTest {
     }
 
     @Test
-    void testAddData() throws Exception {
-        int value = 16;
-        NettyClientTest.sendSync(p8003, new CURDRequest(CURDOperation.set, new String[]{"a"}, new Object[]{value}));
-    }
-
-    @Test
-    void testAddAndGetData() throws Exception {
-        int value = 300;
+    void addAndGetData() throws Exception {
+        int value = 301;
         NettyClientTest.sendSync(p8003, new CURDRequest(CURDOperation.set, new String[]{"a"}, new Object[]{value}));
         Response res = NettyClientTest.sendSync(p8002, new CURDRequest(CURDOperation.get, new String[]{"a"}, null));
         Assertions.assertEquals(value, ((CURDResponse) res).value[0]);

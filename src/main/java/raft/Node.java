@@ -98,9 +98,6 @@ public class Node implements INode {
         this.currentTerm = this.logEntries.getCurrentTerm();
         this.lastVoteFor = this.logEntries.getLastVoteFor();
         this.rpcClient = new RpcClient(local.getSocketAddress(), this::handle);
-    }
-
-    {
         // use SPI to load business processors
         ServiceLoader.load(Processor.class).iterator().forEachRemaining(this.processors::add);
     }
