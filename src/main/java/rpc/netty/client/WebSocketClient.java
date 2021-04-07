@@ -3,6 +3,7 @@ package rpc.netty.client;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.EventLoopGroup;
+import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.ssl.SslContext;
@@ -21,12 +22,21 @@ public final class WebSocketClient {
     private static final Logger LOGGER = LoggerFactory.getLogger(WebSocketClient.class);
 
     // all client connections will use one event loop, actually, can use WebSocketServer.java's bossGroup, but for performance, use singe one
-    private static final EventLoopGroup EVENT_LOOP = new NioEventLoopGroup(1);
+    private static final EventLoopGroup EVENT_LOOP;
 
     private final Function<Object, Response> function;
     private final InetSocketAddress localAddress;
 
-    public WebSocketClient( InetSocketAddress localAddress,Function<Object, Response> function) {
+    static {
+        if (System.getProperty("os.name").toLowerCase().contains("linux")) {
+            EVENT_LOOP = new EpollEventLoopGroup(1);
+        } else {
+            EVENT_LOOP = new NioEventLoopGroup(1);
+        }
+    }
+
+
+    public WebSocketClient(InetSocketAddress localAddress, Function<Object, Response> function) {
         this.function = function;
         this.localAddress = localAddress;
     }

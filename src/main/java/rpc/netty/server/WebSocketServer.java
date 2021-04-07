@@ -3,6 +3,9 @@ package rpc.netty.server;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.EventLoopGroup;
+import io.netty.channel.ServerChannel;
+import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.ssl.SslContext;
@@ -29,16 +32,24 @@ public final class WebSocketServer {
     }
 
     public void start() {
-
-        EventLoopGroup bossGroup = new NioEventLoopGroup(1);
-        EventLoopGroup workerGroup = new NioEventLoopGroup();
+        EventLoopGroup bossGroup, workerGroup;
+        Class<? extends ServerChannel> clazz;
+        if (System.getProperty("os.name").toLowerCase().contains("linux")) {
+            bossGroup = new EpollEventLoopGroup(1);
+            workerGroup = new EpollEventLoopGroup();
+            clazz = EpollServerSocketChannel.class;
+        } else {
+            bossGroup = new NioEventLoopGroup(1);
+            workerGroup = new NioEventLoopGroup();
+            clazz = NioServerSocketChannel.class;
+        }
         try {
             // Configure SSL.
             SelfSignedCertificate ssc = new SelfSignedCertificate();
             SslContext sslCtx = SslContextBuilder.forServer(ssc.certificate(), ssc.privateKey()).build();
             ServerBootstrap bootstrap = new ServerBootstrap();
             bootstrap.group(bossGroup, workerGroup)
-                    .channel(NioServerSocketChannel.class)
+                    .channel(clazz)
                     .childHandler(new WebSocketServerInitializer(sslCtx, localAddress, function));
 
             Channel channel = bootstrap.bind(localAddress.getPort()).sync().channel();
