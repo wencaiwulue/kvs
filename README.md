@@ -19,15 +19,31 @@
 ## How to bootstrap this project?
 
 - Clone this project to your idea
-- Run the main class KvsApplication
-- Edit configurations, add environment: port=8001. (You can use any port you want)
+- Run the main class KvsApplication:
+- First way
+    ```shell
+    mvn clean package
+    ```
+    then start the first node:
+    ```shell
+    port=8000 java -jar target/kvs.jar
+    ```
+    start the second node:
+    ```shell
+    port=8001 java -jar target/kvs.jar
+    ```
+    start the third node:
+    ```shell
+    port=8002 java -jar target/kvs.jar
+    ```
+- Second way, edit configurations, add environment: port=8001. (You can use any port you want)
   ![img.png](src/main/resources/image/img_0.png)
   ![img_1.png](src/main/resources/image/img_1.png)
 - Copy configuration, rename and add environment: port=8002. (You can use any port you want)
   ![img_2.png](src/main/resources/image/img_2.png)
 - Copy configuration, rename and add environment: port=8003. (You can use any port you want)
   ![img_2.png](src/main/resources/image/img_3.png)
-- After Run this three configurations, find the test class AppTest.java,  run the method addPeer1And2And3()
+- After Run this three configurations, find the test class AppTest.java, run the method addPeer1And2And3()
 - Open the console, you can see the log
   ![img_9.png](src/main/resources/image/img_4.png)
 
