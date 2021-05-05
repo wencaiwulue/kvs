@@ -19,33 +19,22 @@
 ## How to bootstrap this project?
 
 - Clone this project to your idea
-- Run the main class KvsApplication:
-- First way
+- Build and run
     ```shell
     mvn clean package
     ```
-    then start the first node:
+  then start the first node:
     ```shell
     port=8000 java -jar target/kvs.jar
     ```
-    start the second node:
+  start the second node:
     ```shell
     port=8001 java -jar target/kvs.jar
     ```
-    start the third node:
+  start the third node:
     ```shell
     port=8002 java -jar target/kvs.jar
     ```
-- Second way, edit configurations, add environment: port=8001. (You can use any port you want)
-  ![img.png](src/main/resources/image/img_0.png)
-  ![img_1.png](src/main/resources/image/img_1.png)
-- Copy configuration, rename and add environment: port=8002. (You can use any port you want)
-  ![img_2.png](src/main/resources/image/img_2.png)
-- Copy configuration, rename and add environment: port=8003. (You can use any port you want)
-  ![img_2.png](src/main/resources/image/img_3.png)
-- After Run this three configurations, find the test class AppTest.java, run the method addPeer1And2And3()
-- Open the console, you can see the log
-  ![img_9.png](src/main/resources/image/img_4.png)
 
 ## How to verify the correctness
 
@@ -56,18 +45,15 @@
 
 - Bootstrap node1, node2 and node3 manually
 - Find the test case class AppTest.java
-- Run method addPeer1And2()
-  ![img_6.png](src/main/resources/image/img_5.png)
-  this step will notify node1 and node2 each other
-- Run method addPeer3() to add a peer
-  ![img_7.png](src/main/resources/image/img_6.png)
-  this step will notify node2 to add a peer node3, so node2 will be leader theoretically
+    - Run method addPeer1And2()
+      notify node1 and node2 each other
+    - Run method addPeer3()
+      notify node2 to add a peer node3, so node2 will be leader theoretically
 - Congratulations, you already learned how to add a peer to a cluster
-- Run test method removePeer1() to remove peer
-  ![img_8.png](src/main/resources/image/img_7.png)
-  the cluster leader will notify the followers to remove this node, and node3 will poweroff atomically, at the same
-  time, the cluster keep working properly
-- Enjoy, you can try to edit the nodes which one you want to add and remove dynamically
+    - Run method removePeer1()
+      remove peer the cluster leader will notify the followers to remove this node, and node3 will power off atomically,
+      at the same time, the cluster keep working properly
+- Enjoy, you can try to edit the nodes which one you want to add and remove dynamically!
   
   
   
