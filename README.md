@@ -3,6 +3,8 @@
 **Distribute key-value system, Base on Raft protocol and in memory storage, still developing**
 
 [Reference document](https://github.com/maemual/raft-zh_cn/blob/master/raft-zh_cn.md)
+[Reference document](https://raft.github.io)
+[Reference document](http://thesecretlivesofdata.com/raft)
 
 ## Function
 
